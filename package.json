@@ -1,0 +1,14 @@
+{
+  "name": "proenergy-costeo-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PROENERGY - Costeo, rentabilidad y flujo de caja por cotizacion",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
