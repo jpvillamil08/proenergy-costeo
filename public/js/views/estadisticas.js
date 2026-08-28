@@ -1,6 +1,6 @@
 import { api } from '../api.js';
-import { money, pct, num, fmtDMY, esc, todayInputVal } from '../format.js';
-import { lineChart, horizontalBarChart, groupedBarChart, PALETTE } from '../charts.js';
+import { money, pct, num, todayInputVal } from '../format.js';
+import { lineChart, horizontalBarChart, PALETTE } from '../charts.js';
 import { stillMounted } from '../guard.js';
 
 // Rango por defecto: ultimo año.
@@ -14,19 +14,13 @@ const filtros = { desde: haceUnAnio(), hasta: todayInputVal() };
 
 export async function renderEstadisticas(content, state) {
   content.innerHTML = '<div class="spinner-msg">Cargando estadísticas…</div>';
-  const [estadoFacturas, facturas, listaFacturas, cotizaciones] = await Promise.all([
-    state.usuario.rol === 'admin' ? api.get('/api/facturas/estado') : Promise.resolve({ configurada: true }),
-    api.get(`/api/facturas/estadisticas?desde=${filtros.desde}&hasta=${filtros.hasta}`).catch(() => null),
-    api.get(`/api/facturas?desde=${filtros.desde}&hasta=${filtros.hasta}`).catch(() => null),
-    api.get(`/api/cotizaciones/estadisticas?desde=${filtros.desde}&hasta=${filtros.hasta}`),
-  ]);
+  const cotizaciones = await api.get(`/api/cotizaciones/estadisticas?desde=${filtros.desde}&hasta=${filtros.hasta}`);
   if (!stillMounted(content)) return;
-  paint(content, state, { estadoFacturas, facturas, listaFacturas, cotizaciones });
+  paint(content, state, { cotizaciones });
 }
 
 function paint(content, state, data) {
-  const isAdmin = state.usuario.rol === 'admin';
-  const { estadoFacturas, facturas, listaFacturas, cotizaciones } = data;
+  const { cotizaciones } = data;
 
   content.innerHTML = `
     <div class="toolbar"><h1 class="mt-0">Estadísticas</h1></div>
@@ -37,11 +31,6 @@ function paint(content, state, data) {
       </div>
     </div>
 
-    <div class="section-title"><h2>Facturación</h2>
-      ${isAdmin ? `<div class="btn-row"><button class="btn btn-secondary btn-sm" id="btn-sincronizar-facturas">Sincronizar con Siigo</button></div>` : ''}
-    </div>
-    <div id="bloque-facturas"></div>
-
     <div class="section-title"><h2>Cotizaciones: creadas vs. aprobadas</h2></div>
     <div id="bloque-cotizaciones"></div>
   `;
@@ -49,88 +38,7 @@ function paint(content, state, data) {
   document.getElementById('f-desde').addEventListener('change', (e) => { filtros.desde = e.target.value; renderEstadisticas(content, state); });
   document.getElementById('f-hasta').addEventListener('change', (e) => { filtros.hasta = e.target.value; renderEstadisticas(content, state); });
 
-  paintFacturas(document.getElementById('bloque-facturas'), estadoFacturas, facturas, listaFacturas, isAdmin);
-  if (isAdmin) {
-    document.getElementById('btn-sincronizar-facturas').addEventListener('click', async (e) => {
-      const btn = e.target;
-      btn.disabled = true;
-      btn.textContent = 'Sincronizando…';
-      try {
-        const r = await api.post(`/api/facturas/sincronizar?desde=${filtros.desde}&hasta=${filtros.hasta}`);
-        btn.disabled = false;
-        btn.textContent = 'Sincronizar con Siigo';
-        alert(`Listo: ${r.totalSincronizadas} factura(s) sincronizada(s) desde Siigo.`);
-        renderEstadisticas(content, state);
-      } catch (err) {
-        btn.disabled = false;
-        btn.textContent = 'Sincronizar con Siigo';
-        alert('No se pudo sincronizar: ' + err.message);
-      }
-    });
-  }
-
   paintCotizaciones(document.getElementById('bloque-cotizaciones'), cotizaciones);
-}
-
-function paintFacturas(el, estadoFacturas, facturas, listaFacturas, isAdmin) {
-  if (isAdmin && estadoFacturas && !estadoFacturas.configurada) {
-    el.innerHTML = `<div class="card"><div class="empty-state">La conexión con Siigo todavía no está configurada. En Railway, pestaña <strong>Variables</strong> del servicio, agrega SIIGO_USERNAME, SIIGO_ACCESS_KEY y SIIGO_PARTNER_ID.</div></div>`;
-    return;
-  }
-  if (!facturas) {
-    el.innerHTML = `<div class="card"><div class="empty-state">No se pudieron cargar las facturas.</div></div>`;
-    return;
-  }
-  if (!facturas.cantidad) {
-    el.innerHTML = `<div class="card"><div class="empty-state">Sin facturas sincronizadas en este rango de fechas todavía.${isAdmin ? ' Usa "Sincronizar con Siigo" arriba.' : ''}</div></div>`;
-    return;
-  }
-  el.innerHTML = `
-    <div class="kpi-grid">
-      <div class="kpi"><div class="label">Total facturado</div><div class="value">${money(facturas.totalFacturado)}</div></div>
-      <div class="kpi"><div class="label">Saldo pendiente</div><div class="value">${money(facturas.totalSaldo)}</div></div>
-      <div class="kpi"><div class="label">Facturas (vigentes)</div><div class="value">${num(facturas.cantidad, 0)}</div></div>
-      <div class="kpi"><div class="label">Facturas anuladas</div><div class="value">${num(facturas.cantidadAnuladas, 0)}</div></div>
-    </div>
-    <div class="grid-2">
-      <div class="card"><div class="chart-title">Facturación mensual</div><div id="chart-facturas-mes"></div></div>
-      <div class="card"><div class="chart-title">Top 10 clientes facturados</div><div id="chart-facturas-clientes"></div></div>
-    </div>
-    ${facturas.ultimaSincronizacion ? `<div class="field-help">Última sincronización: ${esc(facturas.ultimaSincronizacion)}</div>` : ''}
-    <div class="section-title"><h3>Detalle de facturas</h3></div>
-    ${paintTablaFacturas(listaFacturas)}
-  `;
-  lineChart(document.getElementById('chart-facturas-mes'), {
-    categories: facturas.porMes.map((m) => m.mes),
-    series: [{ name: 'Facturado', color: PALETTE[0], data: facturas.porMes.map((m) => m.total) }],
-  });
-  horizontalBarChart(document.getElementById('chart-facturas-clientes'), {
-    data: facturas.topClientes.map((c) => ({ label: c.cliente, value: c.total })),
-    color: PALETTE[2],
-  });
-}
-
-function paintTablaFacturas(listaFacturas) {
-  if (!listaFacturas || !listaFacturas.length) {
-    return `<div class="card"><div class="empty-state">Sin facturas para listar en este rango de fechas.</div></div>`;
-  }
-  const badge = (estado) => {
-    const cls = estado === 'Pagada' ? 'PAGADO' : estado === 'Anulada' ? 'VENCIDO' : 'Abonado';
-    return `<span class="pago-badge pago-${cls}">${esc(estado)}</span>`;
-  };
-  return `
-    <div class="table-wrap"><table>
-      <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
-      <tbody>${listaFacturas.map((f) => `<tr>
-        <td>${esc(f.numero || '')}</td>
-        <td>${esc(f.cliente || '')}</td>
-        <td>${fmtDMY(f.fecha)}</td>
-        <td class="num">${money(f.total)}</td>
-        <td class="num">${money(f.saldo)}</td>
-        <td>${badge(f.estado)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>
-  `;
 }
 
 function paintCotizaciones(el, c) {
