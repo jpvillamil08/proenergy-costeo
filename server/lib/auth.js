@@ -12,7 +12,13 @@ function hashPassword(password, salt) {
 
 function verifyPassword(password, salt, hash) {
   const check = crypto.scryptSync(password, salt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(check, 'hex'), Buffer.from(hash, 'hex'));
+  const a = Buffer.from(check, 'hex');
+  const b = Buffer.from(hash, 'hex');
+  // timingSafeEqual lanza un error si los buffers no tienen el mismo largo
+  // (por ejemplo si el hash guardado esta corrupto o incompleto). En ese caso
+  // simplemente no coincide, no es un error del sistema.
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 function createSession(usuarioId) {
