@@ -9,7 +9,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const FORCE = process.argv.includes('--force') || process.env.FORCE_SEED === '1';
-const dbPath = path.join(__dirname, 'data', 'costeo.db');
+// IMPORTANTE: esta ruta debe calcularse exactamente igual que en db.js (usando
+// RAILWAY_VOLUME_MOUNT_PATH cuando existe). Si aqui se usara una ruta distinta
+// a la que realmente usa la base de datos, esta comprobacion revisaria un
+// archivo equivocado: en Railway eso hace que este script piense que "ya hay
+// datos" (revisando una copia vieja empaquetada en la imagen) mientras la
+// base de datos real (en el disco persistente) esta vacia, o al reves.
+const dbPath = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data'), 'costeo.db');
 
 if (fs.existsSync(dbPath) && !FORCE) {
   try {
