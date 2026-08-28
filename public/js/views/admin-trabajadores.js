@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { money, num, esc } from '../format.js';
 import { stillMounted } from '../guard.js';
 
-const CARGOS = ['Tecnico', 'Liniero', 'Coordinador operativo', 'Conductor', 'Otros'];
+const CARGOS = ['Liniero', 'Tecnico', 'Ejecutivo', 'Chofer', 'Conductor', 'Coordinador operativo', 'Oficios Varios', 'Otros'];
 
 export async function renderTrabajadores(content) {
   content.innerHTML = '<div class="spinner-msg">Cargando…</div>';
