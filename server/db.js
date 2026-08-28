@@ -314,6 +314,12 @@ if (!columnaExiste('cotizaciones', 'siigo_quotation_id')) {
   db.exec(`ALTER TABLE cotizaciones ADD COLUMN siigo_quotation_id TEXT;`);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_cot_siigo ON cotizaciones(siigo_quotation_id) WHERE siigo_quotation_id IS NOT NULL;`);
 }
+// Fecha de vencimiento de la factura, cuando Siigo la reporta (due_date). Si una
+// factura no trae esta fecha, la cartera vencida/antiguedad se calcula asumiendo
+// el plazo de credito estandar vigente en politicas comerciales (ver facturas.routes.js).
+if (!columnaExiste('facturas', 'vencimiento')) {
+  db.exec(`ALTER TABLE facturas ADD COLUMN vencimiento TEXT;`);
+}
 
 // Carga del catalogo inicial de materiales y precios (solo la primera vez que
 // esta version corre: si la tabla materiales ya tiene datos, no hace nada, para

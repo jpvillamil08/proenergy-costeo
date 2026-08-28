@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { money, num, fmtDMY, esc, todayInputVal } from '../format.js';
-import { lineChart, horizontalBarChart, PALETTE } from '../charts.js';
+import { lineChart, horizontalBarChart, severityBarChart, PALETTE, STATUS } from '../charts.js';
 import { stillMounted } from '../guard.js';
 
 // Rango por defecto: ultimo año.
@@ -83,21 +83,37 @@ function paintFacturas(el, estadoFacturas, facturas, listaFacturas, isAdmin) {
   el.innerHTML = `
     <div class="kpi-grid">
       <div class="kpi"><div class="label">Total facturado</div><div class="value">${money(facturas.totalFacturado)}</div></div>
-      <div class="kpi"><div class="label">Saldo pendiente</div><div class="value">${money(facturas.totalSaldo)}</div></div>
+      <div class="kpi alerta"><div class="label">Cartera por cobrar</div><div class="value">${money(facturas.carteraPorCobrar)}</div></div>
+      <div class="kpi alerta"><div class="label">Cartera vencida</div><div class="value">${money(facturas.carteraVencida)}</div></div>
       <div class="kpi"><div class="label">Facturas (vigentes)</div><div class="value">${num(facturas.cantidad, 0)}</div></div>
       <div class="kpi"><div class="label">Facturas anuladas</div><div class="value">${num(facturas.cantidadAnuladas, 0)}</div></div>
     </div>
     <div class="grid-2">
-      <div class="card"><div class="chart-title">Facturación mensual</div><div id="chart-facturas-mes"></div></div>
+      <div class="card"><div class="chart-title">Facturado vs. cobrado por mes</div><div id="chart-facturas-mes"></div></div>
+      <div class="card"><div class="chart-title">Antigüedad de cartera</div><div id="chart-facturas-cartera"></div></div>
       <div class="card"><div class="chart-title">Top 10 clientes facturados</div><div id="chart-facturas-clientes"></div></div>
     </div>
     ${facturas.ultimaSincronizacion ? `<div class="field-help">Última sincronización: ${esc(facturas.ultimaSincronizacion)}</div>` : ''}
+    ${facturas.usaPlazoAsumido ? `<div class="field-help">Algunas facturas no traen fecha de vencimiento desde Siigo: para esas, la cartera vencida asume un plazo de ${facturas.plazoAsumidoDias} días desde la fecha de la factura (plazo estándar de la política comercial vigente).</div>` : ''}
     <div class="section-title"><h2>Detalle de facturas</h2></div>
     ${paintTablaFacturas(listaFacturas)}
   `;
   lineChart(document.getElementById('chart-facturas-mes'), {
     categories: facturas.porMes.map((m) => m.mes),
-    series: [{ name: 'Facturado', color: PALETTE[0], data: facturas.porMes.map((m) => m.total) }],
+    series: [
+      { name: 'Facturado', color: PALETTE[0], data: facturas.porMes.map((m) => m.total) },
+      { name: 'Cobrado', color: PALETTE[2], data: facturas.porMes.map((m) => m.cobrado) },
+    ],
+  });
+  const buckets = facturas.antiguedadCartera;
+  severityBarChart(document.getElementById('chart-facturas-cartera'), {
+    data: [
+      { label: 'Corriente', value: buckets['Corriente'] || 0, color: STATUS.good },
+      { label: '1-30', value: buckets['1-30'] || 0, color: PALETTE[3] },
+      { label: '31-60', value: buckets['31-60'] || 0, color: STATUS.warning },
+      { label: '61-90', value: buckets['61-90'] || 0, color: STATUS.serious },
+      { label: '+90', value: buckets['+90'] || 0, color: STATUS.critical },
+    ],
   });
   horizontalBarChart(document.getElementById('chart-facturas-clientes'), {
     data: facturas.topClientes.map((c) => ({ label: c.cliente, value: c.total })),
