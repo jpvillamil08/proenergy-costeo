@@ -36,7 +36,15 @@ module.exports = (router) => {
     sendJson(res, 200, despues);
   }));
 
-  router.del('/api/trabajadores/:id', withAdmin(async ({ res, params, user }) => {
+  router.del('/api/trabajadores/:id', withAdmin(async ({ res, params, user, query }) => {
+    if (query.permanente === '1') {
+      // Borrado definitivo (irreversible): solo para limpiar registros de ejemplo/prueba
+      // que nunca se usaron en ninguna cotizacion real. Uso normal debe ser desactivar.
+      db.prepare('DELETE FROM trabajadores WHERE id = ?').run(params.id);
+      registrar({ usuario: user, accion: 'ELIMINAR_PERMANENTE', entidad: 'trabajadores', entidadId: params.id });
+      sendJson(res, 200, { ok: true, permanente: true });
+      return;
+    }
     db.prepare('UPDATE trabajadores SET activo = 0 WHERE id = ?').run(params.id);
     registrar({ usuario: user, accion: 'ELIMINAR', entidad: 'trabajadores', entidadId: params.id });
     sendJson(res, 200, { ok: true });
