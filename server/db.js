@@ -4,7 +4,16 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// IMPORTANTE: en Railway, si el servicio tiene un Volume (disco persistente)
+// conectado, Railway inyecta automaticamente la variable de entorno
+// RAILWAY_VOLUME_MOUNT_PATH con la ruta donde ese disco esta montado dentro
+// del contenedor. Hay que guardar la base de datos AHI, no en una carpeta
+// relativa al codigo fuente (__dirname): esa carpeta vive dentro de la imagen
+// del contenedor, que se reconstruye desde cero en cada despliegue, por lo que
+// cualquier dato guardado ahi se pierde al redesplegar. Si no hay Volume
+// conectado (por ejemplo en desarrollo local), se usa la carpeta local de
+// siempre como respaldo.
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const DB_PATH = path.join(DATA_DIR, 'costeo.db');
 
