@@ -4,6 +4,13 @@ import { stillMounted } from '../guard.js';
 
 const CARGOS = ['Liniero', 'Tecnico', 'Ejecutivo', 'Chofer', 'Conductor', 'Coordinador operativo', 'Oficios Varios', 'Otros'];
 
+// 30 días × 8 horas/día: la misma cuenta usada para pasar de salario mensual a
+// tarifa por hora (y viceversa) para el personal Interno. Ver conversación con
+// el usuario del 28/08/2026: "divide el sueldo por 30 días y las horas que trabaja".
+const HORAS_MES = 240;
+const salarioAntes = (t) => (t.tipo === 'Interno' ? t.tarifa_hora * HORAS_MES : null);
+const salarioDespues = (t) => (t.tipo === 'Interno' ? t.tarifa_hora * (t.factor_prestacional || 1) * HORAS_MES : null);
+
 export async function renderTrabajadores(content) {
   content.innerHTML = '<div class="spinner-msg">Cargando…</div>';
   const rows = await api.get('/api/trabajadores?todos=1');
@@ -16,15 +23,18 @@ function paint(content, rows) {
     <div class="toolbar"><h1 class="mt-0">Catálogo de trabajadores</h1></div>
     <div class="card">
       <div class="table-wrap"><table>
-        <thead><tr><th>Nombre</th><th>Cargo</th><th>Tipo</th><th class="num">Tarifa/h</th><th class="num">Factor prestacional</th><th>IVA</th><th>Retención</th><th>Activo</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Cargo</th><th>Tipo</th><th class="num">Salario mensual (antes prest.)</th><th class="num">Salario mensual (después prest.)</th><th class="num">Tarifa/h</th><th class="num">Factor prestacional</th><th>IVA</th><th>Retención</th><th>Activo</th><th></th></tr></thead>
         <tbody>${rows.map((t) => `<tr data-id="${t.id}">
-          <td>${esc(t.nombre)}</td><td>${t.cargo}</td><td>${t.tipo}</td><td class="num">${money(t.tarifa_hora)}</td>
+          <td>${esc(t.nombre)}</td><td>${t.cargo}</td><td>${t.tipo}</td>
+          <td class="num">${salarioAntes(t) !== null ? money(salarioAntes(t)) : '—'}</td>
+          <td class="num">${salarioDespues(t) !== null ? money(salarioDespues(t)) : '—'}</td>
+          <td class="num">${money(t.tarifa_hora)}</td>
           <td class="num">${t.tipo === 'Interno' ? num(t.factor_prestacional, 2) : '—'}</td>
           <td>${t.tipo === 'Externo' ? (t.factura_iva ? 'Sí' : 'No') : '—'}</td>
           <td>${t.tipo === 'Externo' ? (t.aplica_retencion ? 'Sí' : 'No') : '—'}</td>
           <td>${t.activo ? 'Sí' : 'No'}</td>
           <td class="btn-row"><button class="btn btn-sm btn-secondary act-edit">Editar</button><button class="btn btn-sm btn-danger act-del">${t.activo ? 'Desactivar' : ''}</button></td>
-        </tr>`).join('') || '<tr><td colspan="9" class="empty-state">Sin trabajadores.</td></tr>'}</tbody>
+        </tr>`).join('') || '<tr><td colspan="11" class="empty-state">Sin trabajadores.</td></tr>'}</tbody>
       </table></div>
     </div>
     <div class="card" style="max-width:640px">
@@ -35,8 +45,9 @@ function paint(content, rows) {
           <div class="field"><label>Nombre</label><input name="nombre" required></div>
           <div class="field"><label>Cargo</label><select name="cargo">${CARGOS.map((c) => `<option>${c}</option>`).join('')}</select></div>
           <div class="field"><label>Tipo</label><select name="tipo" id="sel-tipo"><option>Interno</option><option>Externo</option></select></div>
-          <div class="field"><label>Tarifa por hora</label><input type="number" name="tarifa_hora" min="0" step="100" value="0" required></div>
-          <div class="field" id="campo-factor"><label>Factor prestacional</label><input type="number" name="factor_prestacional" min="1" step="0.01" value="1.52"></div>
+          <div class="field" id="campo-salario"><label>Salario mensual (antes de prestaciones)</label><input type="number" id="salario_mensual" min="0" step="1000" value="0"></div>
+          <div class="field"><label>Tarifa por hora</label><input type="number" name="tarifa_hora" id="tarifa_hora" min="0" step="1" value="0" required><small id="ayuda-tarifa" class="field-help"></small></div>
+          <div class="field" id="campo-factor"><label>Factor prestacional</label><input type="number" name="factor_prestacional" id="factor_prestacional" min="1" step="0.01" value="1.52"></div>
           <div class="field" id="campo-iva"><label>¿Factura con IVA?</label><select name="factura_iva"><option value="0">No</option><option value="1">Sí</option></select></div>
           <div class="field" id="campo-ret"><label>¿Se le retiene?</label><select name="aplica_retencion"><option value="0">No</option><option value="1">Sí</option></select></div>
         </div>
@@ -45,11 +56,43 @@ function paint(content, rows) {
       </form>
     </div>
   `;
+  const salarioInput = document.getElementById('salario_mensual');
+  const tarifaInput = document.getElementById('tarifa_hora');
+  const ayudaTarifa = document.getElementById('ayuda-tarifa');
+
+  function actualizarAyudaTarifa() {
+    const factor = Number(document.getElementById('factor_prestacional').value) || 1;
+    const tarifa = Number(tarifaInput.value) || 0;
+    if (document.getElementById('sel-tipo').value === 'Interno' && tarifa) {
+      ayudaTarifa.textContent = `Después de prestaciones: ${Math.round(tarifa * factor).toLocaleString('es-CO')}/h · Salario después de prestaciones: ${Math.round(tarifa * factor * HORAS_MES).toLocaleString('es-CO')}/mes`;
+    } else {
+      ayudaTarifa.textContent = '';
+    }
+  }
+  function salarioATarifa() {
+    const salario = Number(salarioInput.value) || 0;
+    tarifaInput.value = Math.round(salario / HORAS_MES);
+    actualizarAyudaTarifa();
+  }
+  salarioInput.addEventListener('input', salarioATarifa);
+  document.getElementById('factor_prestacional').addEventListener('input', actualizarAyudaTarifa);
+  tarifaInput.addEventListener('input', () => {
+    // Si el usuario edita la tarifa/h directamente (por ejemplo en un trabajador
+    // Externo), mantenemos el campo de salario mensual en sincronía por si cambia
+    // el tipo despues, pero sin forzar el valor mientras el tipo sea Externo.
+    if (document.getElementById('sel-tipo').value === 'Interno') {
+      salarioInput.value = Math.round((Number(tarifaInput.value) || 0) * HORAS_MES);
+    }
+    actualizarAyudaTarifa();
+  });
+
   function toggleCampos() {
     const tipo = document.getElementById('sel-tipo').value;
     document.getElementById('campo-factor').style.display = tipo === 'Interno' ? '' : 'none';
+    document.getElementById('campo-salario').style.display = tipo === 'Interno' ? '' : 'none';
     document.getElementById('campo-iva').style.display = tipo === 'Externo' ? '' : 'none';
     document.getElementById('campo-ret').style.display = tipo === 'Externo' ? '' : 'none';
+    actualizarAyudaTarifa();
   }
   document.getElementById('sel-tipo').addEventListener('change', toggleCampos);
   toggleCampos();
@@ -60,6 +103,7 @@ function paint(content, rows) {
     const form = document.getElementById('form-trab');
     form.id.value = t.id; form.nombre.value = t.nombre; form.cargo.value = t.cargo; form.tipo.value = t.tipo;
     form.tarifa_hora.value = t.tarifa_hora; form.factor_prestacional.value = t.factor_prestacional || 1.52;
+    salarioInput.value = t.tipo === 'Interno' ? Math.round(t.tarifa_hora * HORAS_MES) : 0;
     form.factura_iva.value = t.factura_iva ? '1' : '0'; form.aplica_retencion.value = t.aplica_retencion ? '1' : '0';
     document.getElementById('form-title').textContent = `Editar trabajador: ${t.nombre}`;
     toggleCampos();

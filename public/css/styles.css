@@ -124,6 +124,7 @@ input, select, textarea {
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--s1); outline-offset: 1px; }
 input[readonly], input:disabled { background: #f1f2f1; color: var(--muted); }
 .field { margin-bottom: 12px; }
+.field-help { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin: 0 0 14px; }
 legend { font-weight: 600; padding: 0 6px; }
