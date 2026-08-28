@@ -178,6 +178,23 @@ CREATE TABLE IF NOT EXISTS cuentas_por_pagar (
   fecha_pago TEXT
 );
 
+-- Facturas de venta, sincronizadas desde Siigo (solo lectura: no se editan aqui,
+-- se vuelven a sincronizar cuando el usuario lo pida). Sirven para el modulo de
+-- estadisticas de facturacion (total facturado por rango de fechas, por mes, por cliente).
+CREATE TABLE IF NOT EXISTS facturas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  siigo_invoice_id TEXT UNIQUE,
+  numero TEXT,
+  cliente TEXT,
+  fecha TEXT NOT NULL,
+  total REAL NOT NULL DEFAULT 0,
+  saldo REAL NOT NULL DEFAULT 0,
+  estado TEXT,
+  anulada INTEGER NOT NULL DEFAULT 0,
+  sincronizado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_facturas_fecha ON facturas(fecha);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   usuario_id INTEGER REFERENCES usuarios(id),

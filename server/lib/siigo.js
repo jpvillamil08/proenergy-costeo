@@ -105,6 +105,20 @@ async function obtenerCliente(id) {
   return siigoFetch(`/v1/customers/${encodeURIComponent(id)}`);
 }
 
+// Lista facturas de venta de Siigo. Mismos parametros que listarCotizaciones.
+async function listarFacturas({ createdStart, createdEnd, page = 1, pageSize = 100 } = {}) {
+  const qs = new URLSearchParams();
+  if (createdStart) qs.set('created_start', createdStart);
+  if (createdEnd) qs.set('created_end', createdEnd);
+  qs.set('page', String(page));
+  qs.set('page_size', String(pageSize));
+  return siigoFetch(`/v1/invoices?${qs.toString()}`);
+}
+
+async function obtenerFactura(id) {
+  return siigoFetch(`/v1/invoices/${encodeURIComponent(id)}`);
+}
+
 // Nombre legible de un cliente de Siigo (persona o empresa).
 function nombreCliente(cliente) {
   if (!cliente) return '';
@@ -113,6 +127,9 @@ function nombreCliente(cliente) {
   return cliente.identification || 'Cliente sin nombre';
 }
 
-module.exports = { listarCotizaciones, obtenerCotizacion, obtenerCliente, nombreCliente, configurada: () => {
-  try { config(); return true; } catch (e) { return false; }
-} };
+module.exports = {
+  listarCotizaciones, obtenerCotizacion, listarFacturas, obtenerFactura, obtenerCliente, nombreCliente,
+  configurada: () => {
+    try { config(); return true; } catch (e) { return false; }
+  },
+};

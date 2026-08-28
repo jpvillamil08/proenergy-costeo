@@ -37,6 +37,48 @@ module.exports = (router) => {
     sendJson(res, 200, list);
   }));
 
+  // Estadisticas de cuantas cotizaciones se crean vs. cuantas se aprueban, dentro
+  // de un rango de fechas (por fecha_cotizacion). "Aprobada" para este conteo
+  // significa Aprobada, Ejecutada o Cerrada (el mismo criterio que ya usa
+  // /api/dashboard para la tasa de conversion global, aqui con rango de fechas
+  // y desglose mes a mes).
+  router.get('/api/cotizaciones/estadisticas', withAuth(async ({ res, query }) => {
+    const desde = query.desde || addDays(todayStr(), -365);
+    const hasta = query.hasta || todayStr();
+    const APROBADAS = ['Aprobada', 'Ejecutada', 'Cerrada'];
+    const rows = db.prepare(
+      'SELECT id, estado, fecha_cotizacion, precio_venta FROM cotizaciones WHERE fecha_cotizacion BETWEEN ? AND ?'
+    ).all(desde, hasta);
+
+    const porEstado = {};
+    for (const r of rows) porEstado[r.estado] = (porEstado[r.estado] || 0) + 1;
+
+    const aprobadas = rows.filter((r) => APROBADAS.includes(r.estado));
+    const decididas = rows.filter((r) => r.estado !== 'Borrador');
+    const tasaConversionSobreDecididas = decididas.length ? aprobadas.length / decididas.length : null;
+    const tasaConversionSobreTotal = rows.length ? aprobadas.length / rows.length : null;
+    const valorTotalCotizado = rows.reduce((a, r) => a + (r.precio_venta || 0), 0);
+    const valorAprobado = aprobadas.reduce((a, r) => a + (r.precio_venta || 0), 0);
+
+    const porMesMap = {};
+    for (const r of rows) {
+      const mes = (r.fecha_cotizacion || '').slice(0, 7);
+      if (!mes) continue;
+      if (!porMesMap[mes]) porMesMap[mes] = { creadas: 0, aprobadas: 0 };
+      porMesMap[mes].creadas++;
+      if (APROBADAS.includes(r.estado)) porMesMap[mes].aprobadas++;
+    }
+    const porMes = Object.keys(porMesMap).sort().map((mes) => ({ mes, ...porMesMap[mes] }));
+
+    sendJson(res, 200, {
+      desde, hasta,
+      total: rows.length, aprobadas: aprobadas.length, decididas: decididas.length,
+      tasaConversionSobreDecididas, tasaConversionSobreTotal,
+      valorTotalCotizado, valorAprobado,
+      porEstado, porMes,
+    });
+  }));
+
   router.get('/api/cotizaciones/:id', withAuth(async ({ res, params }) => {
     const full = svc.getCotizacionFull(params.id);
     if (!full) throw new HttpError(404, 'Cotización no encontrada');

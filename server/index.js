@@ -26,6 +26,7 @@ require('./routes/auditoria.routes')(router);
 require('./routes/import_export.routes')(router);
 require('./routes/print.routes')(router);
 require('./routes/siigo.routes')(router);
+require('./routes/facturas.routes')(router);
 require('./routes/asistente.routes')(router);
 
 const MIME = {
