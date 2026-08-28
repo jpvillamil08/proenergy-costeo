@@ -14,18 +14,19 @@ const filtros = { desde: haceUnAnio(), hasta: todayInputVal() };
 
 export async function renderEstadisticas(content, state) {
   content.innerHTML = '<div class="spinner-msg">Cargando estadísticas…</div>';
-  const [estadoFacturas, facturas, cotizaciones] = await Promise.all([
+  const [estadoFacturas, facturas, listaFacturas, cotizaciones] = await Promise.all([
     state.usuario.rol === 'admin' ? api.get('/api/facturas/estado') : Promise.resolve({ configurada: true }),
     api.get(`/api/facturas/estadisticas?desde=${filtros.desde}&hasta=${filtros.hasta}`).catch(() => null),
+    api.get(`/api/facturas?desde=${filtros.desde}&hasta=${filtros.hasta}`).catch(() => null),
     api.get(`/api/cotizaciones/estadisticas?desde=${filtros.desde}&hasta=${filtros.hasta}`),
   ]);
   if (!stillMounted(content)) return;
-  paint(content, state, { estadoFacturas, facturas, cotizaciones });
+  paint(content, state, { estadoFacturas, facturas, listaFacturas, cotizaciones });
 }
 
 function paint(content, state, data) {
   const isAdmin = state.usuario.rol === 'admin';
-  const { estadoFacturas, facturas, cotizaciones } = data;
+  const { estadoFacturas, facturas, listaFacturas, cotizaciones } = data;
 
   content.innerHTML = `
     <div class="toolbar"><h1 class="mt-0">Estadísticas</h1></div>
@@ -48,7 +49,7 @@ function paint(content, state, data) {
   document.getElementById('f-desde').addEventListener('change', (e) => { filtros.desde = e.target.value; renderEstadisticas(content, state); });
   document.getElementById('f-hasta').addEventListener('change', (e) => { filtros.hasta = e.target.value; renderEstadisticas(content, state); });
 
-  paintFacturas(document.getElementById('bloque-facturas'), estadoFacturas, facturas, isAdmin);
+  paintFacturas(document.getElementById('bloque-facturas'), estadoFacturas, facturas, listaFacturas, isAdmin);
   if (isAdmin) {
     document.getElementById('btn-sincronizar-facturas').addEventListener('click', async (e) => {
       const btn = e.target;
@@ -71,7 +72,7 @@ function paint(content, state, data) {
   paintCotizaciones(document.getElementById('bloque-cotizaciones'), cotizaciones);
 }
 
-function paintFacturas(el, estadoFacturas, facturas, isAdmin) {
+function paintFacturas(el, estadoFacturas, facturas, listaFacturas, isAdmin) {
   if (isAdmin && estadoFacturas && !estadoFacturas.configurada) {
     el.innerHTML = `<div class="card"><div class="empty-state">La conexión con Siigo todavía no está configurada. En Railway, pestaña <strong>Variables</strong> del servicio, agrega SIIGO_USERNAME, SIIGO_ACCESS_KEY y SIIGO_PARTNER_ID.</div></div>`;
     return;
@@ -96,6 +97,8 @@ function paintFacturas(el, estadoFacturas, facturas, isAdmin) {
       <div class="card"><div class="chart-title">Top 10 clientes facturados</div><div id="chart-facturas-clientes"></div></div>
     </div>
     ${facturas.ultimaSincronizacion ? `<div class="field-help">Última sincronización: ${esc(facturas.ultimaSincronizacion)}</div>` : ''}
+    <div class="section-title"><h3>Detalle de facturas</h3></div>
+    ${paintTablaFacturas(listaFacturas)}
   `;
   lineChart(document.getElementById('chart-facturas-mes'), {
     categories: facturas.porMes.map((m) => m.mes),
@@ -105,6 +108,29 @@ function paintFacturas(el, estadoFacturas, facturas, isAdmin) {
     data: facturas.topClientes.map((c) => ({ label: c.cliente, value: c.total })),
     color: PALETTE[2],
   });
+}
+
+function paintTablaFacturas(listaFacturas) {
+  if (!listaFacturas || !listaFacturas.length) {
+    return `<div class="card"><div class="empty-state">Sin facturas para listar en este rango de fechas.</div></div>`;
+  }
+  const badge = (estado) => {
+    const cls = estado === 'Pagada' ? 'PAGADO' : estado === 'Anulada' ? 'VENCIDO' : 'Abonado';
+    return `<span class="pago-badge pago-${cls}">${esc(estado)}</span>`;
+  };
+  return `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+      <tbody>${listaFacturas.map((f) => `<tr>
+        <td>${esc(f.numero || '')}</td>
+        <td>${esc(f.cliente || '')}</td>
+        <td>${fmtDMY(f.fecha)}</td>
+        <td class="num">${money(f.total)}</td>
+        <td class="num">${money(f.saldo)}</td>
+        <td>${badge(f.estado)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  `;
 }
 
 function paintCotizaciones(el, c) {
