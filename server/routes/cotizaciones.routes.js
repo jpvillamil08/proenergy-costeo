@@ -4,6 +4,7 @@ const { sendJson, readJsonBody, HttpError } = require('../lib/http-helpers');
 const { withAuth, withAdmin } = require('../lib/guard');
 const { registrar, registrarCambios } = require('../lib/audit');
 const svc = require('../lib/cotizacion-service');
+const estimador = require('../lib/estimador');
 const { vigenteEn: parametrosVigenteEn } = require('./parametros.routes');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const { todayStr, addDays } = require('../lib/dates');
@@ -105,6 +106,18 @@ module.exports = (router) => {
     registrar({ usuario: user, accion: 'CREAR', entidad: 'cotizaciones', entidadId: info.lastInsertRowid, valorNuevo: numero });
     const full = svc.getCotizacionFull(info.lastInsertRowid);
     sendJson(res, 201, full);
+  }));
+
+  // Estima materiales y precedentes de mano de obra a partir de una descripcion
+  // de texto libre (se usa antes de crear la cotizacion, o para revisarla ya
+  // creada). No inventa cifras: solo cruza contra el catalogo de materiales
+  // real y contra cotizaciones anteriores con descripcion parecida.
+  router.post('/api/cotizaciones/estimar-costos', withAuth(async ({ req, res }) => {
+    const b = await readJsonBody(req);
+    if (!b.descripcion || !b.descripcion.trim()) throw new HttpError(400, 'Escriba primero la descripción del trabajo.');
+    const materiales = estimador.sugerirMateriales(b.descripcion);
+    const precedentes = estimador.buscarPrecedentes(b.descripcion, b.excluir_id);
+    sendJson(res, 200, { materiales, precedentes });
   }));
 
   router.put('/api/cotizaciones/:id', withAdmin(async ({ req, res, params, user }) => {

@@ -60,6 +60,7 @@ function paint(content) {
 
     <div class="tabs" id="tabs">
       ${tabBtn('costeo', 'Costeo y rentabilidad')}
+      ${isAdmin ? tabBtn('rapida', 'Selección rápida') : ''}
       ${tabBtn('mano-obra', 'Mano de obra')}
       ${tabBtn('materiales', 'Materiales')}
       ${tabBtn('comparativo', 'Presupuestado vs. real')}
@@ -86,6 +87,7 @@ function paint(content) {
   paintHeaderCard(content);
   const body = document.getElementById('tab-body');
   if (tab === 'costeo') paintCosteo(body);
+  else if (tab === 'rapida') paintSeleccionRapida(body, content);
   else if (tab === 'mano-obra') paintManoObra(body, content);
   else if (tab === 'materiales') paintMateriales(body, content);
   else if (tab === 'comparativo') paintComparativo(body);
@@ -195,6 +197,140 @@ function paintCosteo(body) {
       </tbody></table>
     </div>
   `;
+}
+
+// ---------------- Selección rápida (materiales + mano de obra a la vez) ----------------
+function paintSeleccionRapida(body, content) {
+  const materiales = materialesCat.filter((m) => m.activo);
+  const trabajadores = trabajadoresCat.filter((t) => t.activo === undefined || t.activo);
+
+  body.innerHTML = `
+    <div class="card">
+      <h2 style="margin-top:0">Selección rápida</h2>
+      <p class="muted" style="margin-top:-6px">Marca los materiales y trabajadores que apliquen, ajusta cantidad/horas al lado, y agrégalos todos de una vez. El precio de cada material y la tarifa de cada trabajador son los reales del catálogo.</p>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <h3 style="margin-top:0">Materiales</h3>
+        <input type="text" id="filtro-mat-rapido" placeholder="Filtrar por descripción…" style="width:100%;margin-bottom:8px">
+        <div class="table-wrap" style="max-height:420px;overflow-y:auto">
+          <table>
+            <thead><tr><th></th><th>Material</th><th class="num">Cantidad</th><th class="num">Precio unit.</th><th>Proveedor</th></tr></thead>
+            <tbody id="tbody-mat-rapido">
+              ${materiales.map((m) => `
+                <tr data-id="${m.id}" data-nombre="${esc(m.descripcion.toLowerCase())}">
+                  <td><input type="checkbox" class="chk-mat-rapido" ${m.mejor_precio == null ? 'disabled' : ''}></td>
+                  <td>${esc(m.descripcion)}${m.mejor_precio == null ? ' <span class="muted">(sin precio)</span>' : ''}</td>
+                  <td class="num"><input type="number" class="cant-mat-rapido" min="0.01" step="0.01" value="1" style="width:70px" ${m.mejor_precio == null ? 'disabled' : ''}></td>
+                  <td class="num">${m.mejor_precio != null ? money(m.mejor_precio) : '—'}</td>
+                  <td>${esc(m.mejor_proveedor_nombre || '—')}</td>
+                </tr>`).join('') || `<tr><td colspan="5" class="empty-state">No hay materiales en el catálogo.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Trabajadores</h3>
+        <input type="text" id="filtro-trab-rapido" placeholder="Filtrar por nombre…" style="width:100%;margin-bottom:8px">
+        <div class="table-wrap" style="max-height:420px;overflow-y:auto">
+          <table>
+            <thead><tr><th></th><th>Trabajador</th><th class="num">Horas</th><th class="num">Tarifa/h</th><th>Tipo</th></tr></thead>
+            <tbody id="tbody-trab-rapido">
+              ${trabajadores.map((t) => `
+                <tr data-id="${t.id}" data-nombre="${esc(t.nombre.toLowerCase())}">
+                  <td><input type="checkbox" class="chk-trab-rapido"></td>
+                  <td>${esc(t.nombre)} <span class="muted">— ${esc(t.cargo)}</span></td>
+                  <td class="num"><input type="number" class="horas-trab-rapido" min="0.5" step="0.5" value="1" style="width:70px"></td>
+                  <td class="num">${money(t.tarifa_hora)}</td>
+                  <td>${t.tipo}</td>
+                </tr>`).join('') || `<tr><td colspan="5" class="empty-state">No hay trabajadores en el catálogo.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div class="kpi-grid" style="flex:1">
+        <div class="kpi"><div class="label">Materiales seleccionados</div><div class="value" id="total-mat-rapido">${money(0)}</div></div>
+        <div class="kpi"><div class="label">Mano de obra seleccionada</div><div class="value" id="total-mo-rapido">${money(0)}</div></div>
+        <div class="kpi"><div class="label">Costo directo de la selección</div><div class="value" id="total-directo-rapido">${money(0)}</div></div>
+      </div>
+      <button class="btn btn-primary" id="btn-agregar-rapido">Agregar seleccionados a la cotización</button>
+    </div>
+    <p class="muted">Este total es solo materiales + mano de obra de lo marcado aquí (sin gastos fijos, imprevistos ni comisión). El costeo completo con margen se actualiza en la pestaña "Costeo y rentabilidad" después de agregar las líneas.</p>
+    <div id="msg-rapido"></div>
+  `;
+
+  function recalcular() {
+    let totalMat = 0;
+    body.querySelectorAll('#tbody-mat-rapido tr[data-id]').forEach((tr) => {
+      const chk = tr.querySelector('.chk-mat-rapido');
+      if (!chk || !chk.checked) return;
+      const m = materiales.find((x) => String(x.id) === tr.dataset.id);
+      const cant = Number(tr.querySelector('.cant-mat-rapido').value) || 0;
+      totalMat += cant * (m.mejor_precio || 0);
+    });
+    let totalMo = 0;
+    body.querySelectorAll('#tbody-trab-rapido tr[data-id]').forEach((tr) => {
+      const chk = tr.querySelector('.chk-trab-rapido');
+      if (!chk || !chk.checked) return;
+      const t = trabajadores.find((x) => String(x.id) === tr.dataset.id);
+      const horas = Number(tr.querySelector('.horas-trab-rapido').value) || 0;
+      const factor = t.tipo === 'Interno' ? (t.factor_prestacional || 1) : 1;
+      totalMo += horas * t.tarifa_hora * factor;
+    });
+    document.getElementById('total-mat-rapido').textContent = money(totalMat);
+    document.getElementById('total-mo-rapido').textContent = money(totalMo);
+    document.getElementById('total-directo-rapido').textContent = money(totalMat + totalMo);
+  }
+
+  body.querySelectorAll('.chk-mat-rapido, .cant-mat-rapido, .chk-trab-rapido, .horas-trab-rapido')
+    .forEach((el) => el.addEventListener('input', recalcular));
+
+  document.getElementById('filtro-mat-rapido').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    body.querySelectorAll('#tbody-mat-rapido tr[data-id]').forEach((tr) => {
+      tr.style.display = tr.dataset.nombre.includes(q) ? '' : 'none';
+    });
+  });
+  document.getElementById('filtro-trab-rapido').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase();
+    body.querySelectorAll('#tbody-trab-rapido tr[data-id]').forEach((tr) => {
+      tr.style.display = tr.dataset.nombre.includes(q) ? '' : 'none';
+    });
+  });
+
+  document.getElementById('btn-agregar-rapido').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-agregar-rapido');
+    btn.disabled = true;
+    try {
+      const matsMarcados = [...body.querySelectorAll('#tbody-mat-rapido tr[data-id]')].filter((tr) => tr.querySelector('.chk-mat-rapido').checked);
+      const trabsMarcados = [...body.querySelectorAll('#tbody-trab-rapido tr[data-id]')].filter((tr) => tr.querySelector('.chk-trab-rapido').checked);
+      if (!matsMarcados.length && !trabsMarcados.length) {
+        document.getElementById('msg-rapido').innerHTML = `<div class="error-box">Marca al menos un material o un trabajador.</div>`;
+        return;
+      }
+      for (const tr of matsMarcados) {
+        const m = materiales.find((x) => String(x.id) === tr.dataset.id);
+        const cantidad = Number(tr.querySelector('.cant-mat-rapido').value) || 1;
+        await api.post(`/api/cotizaciones/${cotId}/materiales`, {
+          descripcion: m.descripcion, clasificacion: 'Directo', forma_pago: 'Contado',
+          proveedor_id: m.mejor_proveedor_id, cantidad_presupuestada: cantidad, costo_unitario: m.mejor_precio,
+        });
+      }
+      for (const tr of trabsMarcados) {
+        const t = trabajadores.find((x) => String(x.id) === tr.dataset.id);
+        const horas = Number(tr.querySelector('.horas-trab-rapido').value) || 1;
+        await api.post(`/api/cotizaciones/${cotId}/mano-obra`, {
+          trabajador_id: t.id, horas_presupuestadas: horas, horas_reales: 0,
+        });
+      }
+      await reload(content);
+    } catch (err) {
+      document.getElementById('msg-rapido').innerHTML = `<div class="error-box">${esc(err.message)}</div>`;
+      btn.disabled = false;
+    }
+  });
 }
 
 // ---------------- Mano de obra ----------------
