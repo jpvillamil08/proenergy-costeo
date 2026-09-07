@@ -11,6 +11,7 @@ export async function renderCotizacionesList(content, state) {
   let estadoF = '';
   let siigoAbierto = false;
   let siigoEstado = 'inicial'; // inicial | cargando | sin-configurar | listo | error
+  let materialesEstado = 'inicial'; // inicial | cargando | { tipo: 'preview'|'cargado'|'error', ... }
 
   async function toggleSiigo() {
     siigoAbierto = !siigoAbierto;
@@ -44,6 +45,73 @@ export async function renderCotizacionesList(content, state) {
       btn.disabled = false;
       btn.textContent = 'Importar';
     }
+  }
+
+  async function verPendientesMateriales() {
+    materialesEstado = 'cargando';
+    paint();
+    try {
+      const data = await api.get('/api/siigo/materiales/preview');
+      materialesEstado = { tipo: 'preview', data };
+    } catch (e) {
+      materialesEstado = { tipo: 'error', mensaje: e.message };
+    }
+    paint();
+  }
+
+  async function cargarMaterialesAutomatico() {
+    materialesEstado = 'cargando';
+    paint();
+    try {
+      const data = await api.post('/api/siigo/materiales/cargar');
+      materialesEstado = { tipo: 'cargado', data };
+    } catch (e) {
+      materialesEstado = { tipo: 'error', mensaje: e.message };
+    }
+    paint();
+  }
+
+  // Panel para completar materiales de cotizaciones ya importadas de Siigo
+  // (Siigo no trae costos internos, asi que quedan con costeo en $0 hasta que
+  // se cruzan sus items contra el catalogo real de materiales).
+  function panelMaterialesSiigo() {
+    let cuerpo;
+    if (materialesEstado === 'inicial') {
+      cuerpo = `<button class="btn btn-secondary btn-sm" id="btn-ver-pendientes-mat">Ver cotizaciones de Siigo sin materiales</button>`;
+    } else if (materialesEstado === 'cargando') {
+      cuerpo = `<p class="muted">Consultando Siigo y cruzando contra el catálogo…</p>`;
+    } else if (materialesEstado.tipo === 'error') {
+      cuerpo = `<p class="error">${esc(materialesEstado.mensaje)}</p><button class="btn btn-secondary btn-sm" id="btn-ver-pendientes-mat">Reintentar</button>`;
+    } else if (materialesEstado.tipo === 'preview') {
+      const d = materialesEstado.data;
+      cuerpo = `
+        <p class="muted">${d.pendientesTotales} cotización(es) importadas de Siigo todavía no tienen materiales cargados. Vista previa de las próximas ${d.procesadasEnEstaLlamada}:</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Número</th><th>Cliente</th><th class="num">Items</th><th class="num">Con match</th></tr></thead>
+          <tbody>${d.resultado.map((r) => `
+            <tr>
+              <td>${esc(r.numero)}</td><td>${esc(r.cliente)}</td>
+              <td class="num">${r.totalItems}</td><td class="num">${r.matcheados}/${r.totalItems}</td>
+            </tr>
+            ${r.items.map((it) => `<tr><td></td><td colspan="3" class="muted" style="font-size:12.5px">
+              ${esc(it.descripcion)} (x${num(it.cantidad)}) ${it.match ? `→ ${esc(it.match.material)} a ${money(it.match.costo_unitario)}` : '→ sin match seguro, quedará marcada [REVISAR] con costo $0'}
+            </td></tr>`).join('')}
+          `).join('') || '<tr><td colspan="4" class="empty-state">No hay pendientes.</td></tr>'}</tbody>
+        </table></div>
+        ${d.errores.length ? `<p class="error">Errores al consultar Siigo: ${d.errores.map((e) => `${esc(e.numero)}: ${esc(e.error)}`).join('; ')}</p>` : ''}
+        ${d.pendientesTotales ? `<div class="btn-row" style="margin-top:8px"><button class="btn btn-primary btn-sm" id="btn-cargar-mat">Cargar automáticamente estas ${d.procesadasEnEstaLlamada} cotizaciones</button></div>` : ''}
+      `;
+    } else if (materialesEstado.tipo === 'cargado') {
+      const d = materialesEstado.data;
+      cuerpo = `
+        <p>Se procesaron ${d.cotizacionesProcesadas} cotización(es): ${d.lineasInsertadas} líneas creadas (${d.lineasInsertadas - d.lineasSinMatch} con costo real del catálogo, ${d.lineasSinMatch} marcadas [REVISAR] con costo $0 para completar a mano).</p>
+        ${d.errores.length ? `<p class="error">Errores: ${d.errores.map((e) => `${esc(e.numero)}: ${esc(e.error)}`).join('; ')}</p>` : ''}
+        ${d.pendientesTotales
+          ? `<p class="muted">Quedan ${d.pendientesTotales} cotización(es) más por procesar.</p><button class="btn btn-secondary btn-sm" id="btn-ver-pendientes-mat">Ver siguiente lote</button>`
+          : `<p class="muted">No quedan cotizaciones de Siigo pendientes de materiales.</p>`}
+      `;
+    }
+    return `<div class="card" style="margin-bottom:16px;"><h3 class="mt-0">Materiales de cotizaciones importadas de Siigo</h3>${cuerpo}</div>`;
   }
 
   function panelSiigo() {
@@ -89,6 +157,7 @@ export async function renderCotizacionesList(content, state) {
         </div>
       </div>
       ${isAdmin ? panelSiigo() : ''}
+      ${isAdmin && siigoEstado && siigoEstado.tipo === 'listo' ? panelMaterialesSiigo() : ''}
       <div class="card">
         <div class="filters" style="margin-bottom:14px;">
           <div class="field"><label>Buscar</label><input id="f-buscar" placeholder="Número o cliente" value="${esc(filtro)}"></div>
@@ -120,6 +189,10 @@ export async function renderCotizacionesList(content, state) {
     content.querySelectorAll('.btn-importar-siigo').forEach((btn) => {
       btn.addEventListener('click', () => importar(btn.dataset.siigoId, btn));
     });
+    const btnVerPendientesMat = document.getElementById('btn-ver-pendientes-mat');
+    if (btnVerPendientesMat) btnVerPendientesMat.addEventListener('click', verPendientesMateriales);
+    const btnCargarMat = document.getElementById('btn-cargar-mat');
+    if (btnCargarMat) btnCargarMat.addEventListener('click', cargarMaterialesAutomatico);
   }
   paint();
 }
