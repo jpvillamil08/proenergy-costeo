@@ -156,6 +156,10 @@ class ClienteApi:
         resultado, _ = self._abrir(path, datos, metodo='PUT')
         return resultado
 
+    def post_json(self, path, datos):
+        resultado, _ = self._abrir(path, datos, metodo='POST')
+        return resultado
+
 
 # ---------------------------------------------------------------- utilidades
 
