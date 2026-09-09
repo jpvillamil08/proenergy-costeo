@@ -5,6 +5,7 @@ const { withAuth, withAdmin } = require('../lib/guard');
 const { todayStr, addDays, diffDays } = require('../lib/dates');
 const siigo = require('../lib/siigo');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
+const vinculo = require('../lib/facturas-vinculo');
 
 // Nombre de cliente de una factura de Siigo. El objeto "customer" que viene
 // embebido en cada factura de /v1/invoices trae la misma forma que el cliente
@@ -15,12 +16,12 @@ function nombreClienteFactura(f) {
 }
 
 const upsertSql = `
-  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, sincronizado_en)
-  VALUES (?,?,?,?,?,?,?,?,?, datetime('now'))
+  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, sincronizado_en)
+  VALUES (?,?,?,?,?,?,?,?,?,?, datetime('now'))
   ON CONFLICT(siigo_invoice_id) DO UPDATE SET
     numero = excluded.numero, cliente = excluded.cliente, fecha = excluded.fecha, vencimiento = excluded.vencimiento,
     total = excluded.total, saldo = excluded.saldo, estado = excluded.estado,
-    anulada = excluded.anulada, sincronizado_en = datetime('now')
+    anulada = excluded.anulada, observaciones = excluded.observaciones, sincronizado_en = datetime('now')
 `;
 
 module.exports = (router) => {
@@ -60,7 +61,8 @@ module.exports = (router) => {
         const vencimiento = f.due_date ? String(f.due_date).slice(0, 10) : null;
         upsert.run(
           String(f.id), f.name || String(f.number || f.id), nombreClienteFactura(f),
-          (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada
+          (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,
+          f.observations || null
         );
         totalSincronizadas++;
       }
@@ -71,7 +73,22 @@ module.exports = (router) => {
       page++;
       if (page > 100) break; // salvaguarda
     }
-    sendJson(res, 200, { ok: true, totalSincronizadas });
+    // Con las observaciones ya guardadas, se intenta vincular cada factura con
+    // su cotizacion. Solo vincula donde el numero encontrado existe de verdad.
+    const resultadoVinculo = vinculo.vincular({ soloSimular: false });
+    sendJson(res, 200, { ok: true, totalSincronizadas, vinculo: resultadoVinculo });
+  }));
+
+  // Diagnostico del vinculo factura-cotizacion, sin escribir nada: dice cuantas
+  // facturas traen el numero de cotizacion en sus observaciones y cuantas no.
+  router.get('/api/facturas/vinculo', withAdmin(async ({ res }) => {
+    sendJson(res, 200, vinculo.vincular({ soloSimular: true, soloSinVinculo: false }));
+  }));
+
+  // Vuelve a correr el vinculo sobre las facturas ya sincronizadas (util si se
+  // corrigieron observaciones en Siigo o se importaron cotizaciones nuevas).
+  router.post('/api/facturas/vincular', withAdmin(async ({ res, query }) => {
+    sendJson(res, 200, vinculo.vincular({ soloSimular: false, soloSinVinculo: query.todas !== '1' }));
   }));
 
   // Lista facturas locales dentro de un rango (por defecto, ultimo año).

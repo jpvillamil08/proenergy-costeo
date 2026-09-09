@@ -320,6 +320,19 @@ if (!columnaExiste('cotizaciones', 'siigo_quotation_id')) {
 if (!columnaExiste('facturas', 'vencimiento')) {
   db.exec(`ALTER TABLE facturas ADD COLUMN vencimiento TEXT;`);
 }
+// Observaciones de la factura en Siigo (texto libre). Ahi es donde la empresa
+// escribe a que cotizacion pertenece la factura, asi que se guarda tal cual y
+// de ahi se extrae el vinculo (ver lib/facturas-vinculo.js).
+if (!columnaExiste('facturas', 'observaciones')) {
+  db.exec(`ALTER TABLE facturas ADD COLUMN observaciones TEXT;`);
+}
+// Cotizacion a la que pertenece la factura. Solo se llena cuando el numero
+// encontrado en las observaciones corresponde a una cotizacion que existe de
+// verdad: nunca se inventa el vinculo.
+if (!columnaExiste('facturas', 'cotizacion_id')) {
+  db.exec(`ALTER TABLE facturas ADD COLUMN cotizacion_id INTEGER REFERENCES cotizaciones(id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_facturas_cotizacion ON facturas(cotizacion_id);`);
+}
 
 // Carga del catalogo inicial de materiales y precios (solo la primera vez que
 // esta version corre: si la tabla materiales ya tiene datos, no hace nada, para
