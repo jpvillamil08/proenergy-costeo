@@ -14,13 +14,9 @@ export function renderLogin(appEl, onSuccess) {
           <div class="field"><label>Contraseña</label><input name="password" type="password" autocomplete="current-password" required></div>
           <button class="btn btn-primary" style="width:100%; justify-content:center" type="submit">Ingresar</button>
         </form>
-        <!--
-          Aqui se mostraban las credenciales de prueba (admin/admin123 y
-          gerencia/gerencia123). Servia mientras la app corria solo en local,
-          pero en produccion cualquiera que abriera la direccion las veia y
-          entraba a ver clientes, precios y margenes. Se retiraron: las
-          credenciales iniciales estan en el README, para quien monta la app.
-        -->
+<!-- Aqui se listaban las credenciales iniciales. Se retiraron: en produccion
+     cualquiera que abriera la direccion las veia. Estan en el README, para
+     quien monta la aplicacion. -->
       </div>
     </div>
   `;

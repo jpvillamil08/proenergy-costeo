@@ -50,7 +50,22 @@ function serveStatic(req, res, pathname) {
   }
   const ext = path.extname(filePath);
   const content = fs.readFileSync(filePath);
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  // Sin cabecera de cache, el navegador decide por su cuenta cuanto guardar los
+  // .js y .css, y despues de un despliegue los usuarios siguen viendo la version
+  // anterior (paso: la lista de cotizaciones mostraba "undefined" en la columna
+  // de semaforo porque el navegador servia un format.js viejo). El codigo de la
+  // app se revalida siempre; las imagenes, que casi no cambian, se pueden
+  // guardar un dia.
+  const cache = ext === '.png' || ext === '.ico' || ext === '.svg'
+    ? 'public, max-age=86400'
+    : 'no-cache';
+  res.writeHead(200, {
+    'Content-Type': MIME[ext] || 'application/octet-stream',
+    'Cache-Control': cache,
+    // Fecha del archivo en disco: permite que el navegador revalide con
+    // If-Modified-Since en vez de descargarlo entero cada vez.
+    'Last-Modified': fs.statSync(filePath).mtime.toUTCString(),
+  });
   res.end(content);
   return true;
 }
