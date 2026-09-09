@@ -92,13 +92,13 @@ def candidatas(factura, cotizaciones):
 
 
 COLUMNAS = [
-    'COTIZACION', 'NOTAS', 'confianza_sugerencia', 'factura', 'fecha', 'cliente',
+    'COTIZACION', 'NOTAS', 'confianza_sugerencia', 'n_candidatas', 'factura', 'fecha', 'cliente',
     'total', 'saldo', 'estado', 'observaciones_en_siigo',
     'candidata_1', 'candidata_1_precio', 'candidata_2', 'candidata_2_precio',
     'candidata_3', 'candidata_3_precio', 'siigo_invoice_id',
 ]
 ANCHOS = {
-    'COTIZACION': 14, 'NOTAS': 22, 'confianza_sugerencia': 12, 'factura': 12,
+    'COTIZACION': 14, 'NOTAS': 22, 'confianza_sugerencia': 20, 'n_candidatas': 8, 'factura': 12,
     'fecha': 11, 'cliente': 34, 'total': 15, 'saldo': 14, 'estado': 10,
     'observaciones_en_siigo': 58, 'candidata_1': 12, 'candidata_1_precio': 14,
     'candidata_2': 12, 'candidata_2_precio': 14, 'candidata_3': 12,
@@ -129,13 +129,26 @@ def main():
         cands = candidatas(f, cotizaciones)
         if cands:
             con_alguna += 1
-        exacta = bool(cands and cands[0]['exacto'])
-        if exacta:
+        # Solo se llama "unica" cuando hay UNA candidata y el monto cuadra. Si hay
+        # varias, el monto no identifica la cotizacion: pasa con clientes que
+        # facturan lo mismo cada mes (RUITOQUE tiene varias facturas identicas),
+        # y ahi decidir por monto seria adivinar.
+        unica = bool(cands and cands[0]['exacto'] and len(cands) == 1)
+        if unica:
             con_exacta += 1
+        if not cands:
+            confianza = ''
+        elif unica:
+            confianza = 'UNICA CANDIDATA'
+        elif len(cands) > 1:
+            confianza = f'VARIAS POSIBLES ({len(cands)})'
+        else:
+            confianza = 'aproximada'
         fila = {
             'COTIZACION': None,   # la llena administracion
             'NOTAS': None,
-            'confianza_sugerencia': 'MONTO EXACTO' if exacta else ('aproximada' if cands else ''),
+            'confianza_sugerencia': confianza,
+            'n_candidatas': len(cands),
             'factura': f.get('numero'),
             'fecha': f.get('fecha'),
             'cliente': f.get('cliente'),
@@ -152,8 +165,16 @@ def main():
 
     # Primero las que tienen sugerencia de monto exacto: son las mas faciles de
     # confirmar y las que mas rapido reducen la lista.
-    orden = {'MONTO EXACTO': 0, 'aproximada': 1, '': 2}
-    filas.sort(key=lambda r: (orden[r['confianza_sugerencia']], r['fecha'] or ''), reverse=False)
+    def rango(r):
+        c = r['confianza_sugerencia']
+        if c == 'UNICA CANDIDATA':
+            return 0
+        if c == 'aproximada':
+            return 1
+        if c.startswith('VARIAS'):
+            return 2
+        return 3
+    filas.sort(key=lambda r: (rango(r), r['fecha'] or ''))
 
     carpeta = RAIZ / 'reportes'
     carpeta.mkdir(exist_ok=True)
@@ -193,7 +214,7 @@ def main():
         n = ws.max_row
         ws.cell(row=n, column=1).fill = LLENAR
         ws.cell(row=n, column=2).fill = LLENAR
-        if r['confianza_sugerencia'] == 'MONTO EXACTO':
+        if r['confianza_sugerencia'] == 'UNICA CANDIDATA':
             ws.cell(row=n, column=i_conf).fill = EXACTA
         elif r['confianza_sugerencia']:
             ws.cell(row=n, column=i_conf).fill = APROX
@@ -205,7 +226,9 @@ def main():
     print(f'Excel: {ruta_x}')
     print(f'CSV  : {ruta_c}')
     print(f'\nFacturas sin vincular          : {len(filas)}')
-    print(f'  con candidata de MONTO EXACTO: {con_exacta}')
+    varias = sum(1 for r in filas if r['confianza_sugerencia'].startswith('VARIAS'))
+    print(f'  UNICA candidata (monto cuadra): {con_exacta}')
+    print(f'  VARIAS posibles (ambiguo)     : {varias}')
     print(f'  con alguna candidata          : {con_alguna}')
     print(f'  sin ninguna pista             : {len(filas) - con_alguna}')
 

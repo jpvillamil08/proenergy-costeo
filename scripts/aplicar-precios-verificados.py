@@ -215,16 +215,103 @@ PRECIOS_POR_PREFIJO = [
         # NITROGENO": ese trabajo consume nitrogeno y no es solo mano de obra.
         'prefijos': ['LIMPIEZA Y AJUSTE DE CONEXIONES'],
     },
+    # ---- materiales con precio real encontrado en las listas del proveedor ----
+    # Estos salieron de las busquedas manuales en el catalogo de Felix Torres.
+    # Se ponen aqui, y no en el estimador, porque son precios reales de lista.
+    {
+        'nombre': 'CAJA CORTACIRCUITO (27kV 200A galvanizado)',
+        'precio': 364484.73,
+        'fuente': 'CELSA 52519 CORTACIRCUITO 27KV 200A 125KVBIL 10KA GALV (presupuesto). '
+                  'La descripcion no dice tension ni amperaje: se toma la configuracion mas '
+                  'comun en distribucion. Verificar con el area tecnica',
+        'prefijos': ['CAJA CORTACIRUITO', 'CAJA CORTACIRCUITO', 'CAJAS CORTACIRCUITOS',
+                     'CAJAS CORTACIRUITOS'],
+    },
+    {
+        'nombre': 'HERRAJE CORTO SOPORTE EN L (pararrayo / cortacircuito)',
+        'precio': 7855.55,
+        'fuente': 'IMPUCHE JO001001 SOPORTE P/CORTACIRCUITO Y PARARRAYO 3/16" (presupuesto)',
+        'prefijos': ['HERRAJES CORTO PARA SOPORTE', 'HERRAJE CORTO PARA SOPORTE',
+                     'HERRAJES CORTOS PARA SOPORTE'],
+    },
+    {
+        'nombre': 'CONECTOR AMPACT (otras combinaciones)',
+        'precio': 10967.33,
+        'fuente': '4S CADC-211 CON.AMPACT 4/0-4/0 AWG (presupuesto). Se usa como referencia '
+                  'para las combinaciones que no estan listadas, como 4/0 con #2',
+        'prefijos': ['CONECTOR AMPACT', 'CONECTOR AMPAC', 'CONECTOR AMPACK'],
+    },
+    {
+        'nombre': 'PERNO / TORNILLO 5/8 x 12',
+        'precio': 7980.55,
+        'fuente': 'IMPUCHE JE121012 PERNO DE OJO G.C 5/8*12 (presupuesto JUL-2026). '
+                  'Es perno de ojo, no esparrago: aproximacion por medida equivalente',
+        'prefijos': ['PERNO ESPARRAGO 5/8', 'TORNILLO 5/8', 'ESPARRAGOS DE 12', 'ESPARRAGO 5/8'],
+    },
+    {
+        'nombre': 'COLLARIN / ABRAZADERA PARA POSTE',
+        'precio': 21899.40,
+        'fuente': 'HERRAJES 515 COLLARIN 2S. G.C. 7" (180MM) (presupuesto). Los collarines '
+                  'van por diametro de poste: 120mm $19.045, 180mm $21.899, 250mm $26.515',
+        'prefijos': ['COLLARIN', 'COLLARÍN', 'ABRASADERA PARA POSTE', 'ABRAZADERA PARA POSTE',
+                     'ABRASADERA O COLLARIN', 'ABRAZADERA O COLLARIN'],
+    },
+    {
+        'nombre': 'GRAPA GALVANIZADA 3/4 DOBLE ALA',
+        'precio': 1600,
+        'fuente': 'METAL CURVAS GRAPA DOBLE ALA 3/4" (lista de precios)',
+        'prefijos': ['GRAPA GALV. 3/4', 'GRAPA GALV 3/4', 'GRAPAS GALV'],
+    },
+    {
+        'nombre': 'CONECTOR EMT 3/4',
+        'precio': 250,
+        'fuente': 'METAL CURVAS CONECTOR EMT 3/4" (lista de precios)',
+        'prefijos': ['CONECTOR EMT 3/4', 'EMT CONECTOR', 'UNIONES EMT 3/4', 'UNION EMT 3/4'],
+    },
+    # Tarifas planas acordadas con PROENERGY el 2026-09-09.
+    {
+        'nombre': 'GESTION DE DESCARGO / ANTE OPERADOR DE RED',
+        'precio': 350000,
+        'fuente': 'Tarifa PROENERGY. La gestion ante AIR-E y ante el operador de red '
+                  'son el mismo tramite y valen igual',
+        'prefijos': ['GESTION DESCARGO', 'GESTIÓN DESCARGO', 'GESTION ANTE OPERADOR',
+                     'GESTIÓN ANTE OPERADOR', 'GESTION DE DESCARGO', 'GESTIÓN DE DESCARGO'],
+    },
+    {
+        'nombre': 'GRUA (dia)',
+        'precio': 1500000,
+        'fuente': 'Tarifa PROENERGY: $1.500.000 el dia de grua',
+        'prefijos': ['GRUA', 'GRÚA'],
+    },
+    {
+        'nombre': 'MANO DE OBRA (1 tecnico x 8 h)',
+        'precio': 108090.24,
+        'fuente': '1 tecnico x 8 h x $8.889 promedio x 1,52',
+        'prefijos': ['MANO DE OBRA'],
+    },
+    # Trabajos menores: maniobras puntuales que se resuelven en una hora con dos
+    # tecnicos. NO entra aqui nada que consuma material o equipo (termografia,
+    # transporte, alquileres): eso necesita su propio valor.
+    {
+        'nombre': 'TRABAJOS MENORES (2 tecnicos x 1 h)',
+        'precio': 27022.56,
+        'fuente': '2 tecnicos x 1 h x $8.889 promedio x 1,52. Tarifa PROENERGY para '
+                  'maniobras puntuales',
+        'prefijos': ['CAMBIO DE DPS', 'DESCONEXION DE PUENTES', 'DESCONEXIÓN DE PUENTES',
+                     'MONTAJE DE TC', 'MONTAJE DE TP', 'RECONEXION DE ENERGIA',
+                     'RECONEXIÓN DE ENERGIA', 'RECONEXION DE ENERGÍA', 'RECONEXIÓN DE ENERGÍA',
+                     'CAMBIO DE MEDIDOR', 'CALIBRACION DE TC', 'CALIBRACIÓN DE TC',
+                     'CALIBRACION DE TP', 'CALIBRACIÓN DE TP', 'MANIOBRA DE APERTURA',
+                     'MANIOBRAS DE APERTURA', 'CIERRE DE PUNTO DE CONEXION'],
+    },
     {
         'nombre': 'CARROCANASTA AISLADA (todas sus variantes)',
         'precio': 1370529.28,
         'fuente': 'Cuadrilla de un dia: Silfrido 8h + Angel 8h + Sixto 8h (x1,52) '
                   '+ $300.000 liniero externo + $650.000 gasolina y prestamo del carro',
         'prefijos': ['CARROCANASTA', 'CARRO CANASTA'],
-        # La formula es para 13,2 kV. Hay una variante a 34,5 kV, que exige
-        # linieros certificados a esa tension y no cuesta lo mismo: se excluye
-        # para que la coticen aparte en vez de heredar un precio que no le toca.
-        'excluir_si_contiene': ['34,5', '34.5', '34 5'],
+        # La variante de 34,5 kV llevaba exclusion, pero PROENERGY pidio
+        # aplicarle el mismo valor acordado.
     },
 ]
 
