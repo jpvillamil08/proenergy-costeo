@@ -107,8 +107,8 @@ class ClienteApi:
         self.base_url = base_url
         self.cookie = None
 
-    def _abrir(self, path, datos=None):
-        req = urllib.request.Request(f'{self.base_url}{path}')
+    def _abrir(self, path, datos=None, metodo=None):
+        req = urllib.request.Request(f'{self.base_url}{path}', method=metodo)
         req.add_header('Accept', 'application/json')
         req.add_header('User-Agent', 'PROENERGY-inventario-elementos/1.0')
         if self.cookie:
@@ -151,6 +151,10 @@ class ClienteApi:
     def get(self, path):
         datos, _ = self._abrir(path)
         return datos
+
+    def put(self, path, datos):
+        resultado, _ = self._abrir(path, datos, metodo='PUT')
+        return resultado
 
 
 # ---------------------------------------------------------------- utilidades
