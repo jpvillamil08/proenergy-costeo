@@ -46,6 +46,18 @@ function cotizacionesIndexadas() {
 // Por eso el patron exige "COT" y no acepta "OC".
 const RE_COT_CORTA = /(?:^|-)COT(?:IZACION|IZACIONES)?-?(?:N-?)?(?:O-?)?(\d{1,5})(?:$|-)/g;
 
+// "COT-18-02-2025" es una FECHA (18 de febrero de 2025), no la cotizacion 18.
+// Se descarta cuando al numero le sigue algo con pinta de fecha:
+//   - dos grupos mas (dd-mm-aaaa), o
+//   - un grupo que es un anio (19xx / 20xx), como en "COT-12-2025".
+// Ante la duda se prefiere NO vincular: una factura pegada a la cotizacion
+// equivocada ensucia el analisis mas de lo que ayuda.
+const RE_PARECE_FECHA = /^-(?:\d{1,2}-(?:19|20)?\d{2}(?:$|-)|(?:19|20)\d{2}(?:$|-))/;
+
+function siguienteEsFecha(texto, posFin) {
+  return RE_PARECE_FECHA.test(texto.slice(posFin - 1));
+}
+
 // Busca en el texto los numeros de cotizacion que realmente existen.
 // Devuelve todas las coincidencias distintas encontradas.
 function buscarCotizaciones(observaciones, indice) {
@@ -72,6 +84,9 @@ function buscarCotizaciones(observaciones, indice) {
   RE_COT_CORTA.lastIndex = 0;
   let m;
   while ((m = RE_COT_CORTA.exec(texto)) !== null) {
+    // Descarta "COT-18-02-2025" y similares: eso es una fecha.
+    const finNumero = m.index + m[0].indexOf(m[1]) + m[1].length;
+    if (siguienteEsFecha(texto, finNumero + 1)) continue;
     const suelto = m[1].replace(/^0+/, '') || m[1];
     const candidatas = indice.filter((c) => {
       const cola = c.norm.split('-').pop();
