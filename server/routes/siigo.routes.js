@@ -8,22 +8,11 @@ const { vigenteEn: parametrosVigenteEn } = require('./parametros.routes');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const { todayStr, addDays } = require('../lib/dates');
 const siigo = require('../lib/siigo');
+const sync = require('../lib/siigo-sync');
 
-// Cache simple en memoria de clientes de Siigo ya resueltos en esta ejecucion,
-// para no pedir el mismo cliente dos veces al listar varias cotizaciones.
-const cacheClientes = new Map();
-async function nombreClientePorId(id) {
-  if (!id) return 'Cliente sin identificar';
-  if (cacheClientes.has(id)) return cacheClientes.get(id);
-  try {
-    const cliente = await siigo.obtenerCliente(id);
-    const nombre = siigo.nombreCliente(cliente);
-    cacheClientes.set(id, nombre);
-    return nombre;
-  } catch (e) {
-    return 'Cliente de Siigo (no se pudo consultar el nombre)';
-  }
-}
+// El resolutor de nombres de cliente (con su cache) vive en lib/siigo-sync.js,
+// para compartirlo con el programador diario.
+const nombreClientePorId = sync.nombreClientePorId;
 
 module.exports = (router) => {
   // Estado de la conexion: le dice al frontend si ya estan configuradas las
@@ -57,32 +46,12 @@ module.exports = (router) => {
   // Trae una cotizacion de Siigo y crea el borrador correspondiente en PROENERGY
   // (cliente, fecha y precio). Las lineas de mano de obra y materiales quedan
   // vacias: Siigo no las maneja, se completan aqui con la calculadora real.
+  // La logica vive en lib/siigo-sync.js, compartida con el programador diario.
   router.post('/api/siigo/importar/:siigoId', withAdmin(async ({ res, params, user }) => {
-    const yaExiste = db.prepare('SELECT id FROM cotizaciones WHERE siigo_quotation_id = ?').get(params.siigoId);
-    if (yaExiste) throw new HttpError(409, 'Esta cotización de Siigo ya fue importada antes.');
-
-    const q = await siigo.obtenerCotizacion(params.siigoId);
-    const clienteNombre = await nombreClientePorId(q.customer && q.customer.id);
-    const fecha = (q.date || todayStr()).slice(0, 10);
-    const descripcion = (q.items || []).map((it) => it.description).filter(Boolean).join('; ').slice(0, 500);
-    const numero = q.name || svc.generarNumero();
-
-    const param = parametrosVigenteEn(fecha);
-    const politica = politicaVigenteEn(fecha);
-    if (!param || !politica) throw new HttpError(400, 'No hay parámetros de gastos fijos o políticas comerciales vigentes para esa fecha. Configúrelos primero en Admin.');
-
-    const numeroFinal = db.prepare('SELECT id FROM cotizaciones WHERE numero = ?').get(numero) ? svc.generarNumero() : numero;
-
-    const info = db.prepare(
-      `INSERT INTO cotizaciones (numero, cliente, descripcion, fecha_cotizacion, condicion_pago,
-        dias_credito_otorgados, precio_venta, pct_anticipo, estado, parametros_id, politica_id,
-        creado_por, actualizado_por, siigo_quotation_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).run(
-      numeroFinal, clienteNombre, descripcion || `Importada desde Siigo (cotización ${numero})`, fecha,
-      'Contado', 0, Number(q.total) || 0, 0, 'Borrador', param.id, politica.id, user.id, user.id, params.siigoId
-    );
-    registrar({ usuario: user, accion: 'CREAR', entidad: 'cotizaciones', entidadId: info.lastInsertRowid, valorNuevo: `${numeroFinal} (importada de Siigo)` });
-    sendJson(res, 201, svc.getCotizacionFull(info.lastInsertRowid));
+    const id = await sync.importarCotizacion(params.siigoId, {
+      usuario: user, parametrosVigenteEn, politicaVigenteEn,
+    });
+    if (id === null) throw new HttpError(409, 'Esta cotización de Siigo ya fue importada antes.');
+    sendJson(res, 201, svc.getCotizacionFull(id));
   }));
 };
