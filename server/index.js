@@ -50,15 +50,20 @@ function serveStatic(req, res, pathname) {
   }
   const ext = path.extname(filePath);
   const content = fs.readFileSync(filePath);
-  // Sin cabecera de cache, el navegador decide por su cuenta cuanto guardar los
-  // .js y .css, y despues de un despliegue los usuarios siguen viendo la version
-  // anterior (paso: la lista de cotizaciones mostraba "undefined" en la columna
-  // de semaforo porque el navegador servia un format.js viejo). El codigo de la
-  // app se revalida siempre; las imagenes, que casi no cambian, se pueden
-  // guardar un dia.
+  // Sin cabecera de cache, el navegador decidia por su cuenta cuanto guardar los
+  // .js y .css, y despues de un despliegue los usuarios seguian viendo la version
+  // anterior: la lista de cotizaciones mostraba "undefined" en la columna de
+  // semaforo porque cargaba un format.js viejo.
+  //
+  // Se usa no-store y no no-cache: el frontend son modulos ES (import), y el
+  // navegador los guarda en su propio registro de modulos del que ni siquiera
+  // una recarga forzada los saca. no-store es lo unico que garantiza que tras
+  // cada despliegue todos vean el codigo nuevo. La app pesa poco y es de uso
+  // interno, asi que volver a bajarla en cada carga no es problema; las
+  // imagenes si se guardan un dia, que son lo pesado y casi nunca cambian.
   const cache = ext === '.png' || ext === '.ico' || ext === '.svg'
     ? 'public, max-age=86400'
-    : 'no-cache';
+    : 'no-store, must-revalidate';
   res.writeHead(200, {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': cache,
