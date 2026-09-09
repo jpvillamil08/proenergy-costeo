@@ -169,6 +169,52 @@ PRECIOS_POR_PREFIJO = [
     #                                              TOTAL $1.370.529
     # El 1,52 es el factor prestacional de los tres, que es lo que realmente le
     # cuesta a la empresa un trabajador interno (mismo criterio que usa calc.js).
+    # ---- servicios costeados con horas de tecnico ----
+    # Tarifas de Trabajadores: Harold De Oro $9.167/h, Gustavo Leon $9.167/h y
+    # Daymer Pineda $8.333/h, todos con factor prestacional 1,52. Como el trabajo
+    # lo puede hacer cualquiera de los tres, se usa el promedio ($8.889/h): segun
+    # quienes vayan, el costo real de una cuadrilla de dos oscila entre $202.659
+    # y $222.941.
+    #   1 tecnico  x 8 h x 1,52 = $108.090
+    #   2 tecnicos x 8 h x 1,52 = $216.180
+    {
+        'nombre': 'APERTURA Y CIERRE (2 tecnicos x 8 h)',
+        'precio': 216180.48,
+        'fuente': '2 tecnicos x 8 h x $8.889 promedio x 1,52 (Harold / Daymer / Gustavo)',
+        'prefijos': ['APERTURA Y CIERRE', 'APERTURA Y/O CIERRE', 'APERTURA O CIERRE', 'CIERRE Y APERTURA'],
+    },
+    {
+        'nombre': 'RETIRO E INSTALACION (2 tecnicos x 8 h)',
+        'precio': 216180.48,
+        'fuente': '2 tecnicos x 8 h x $8.889 promedio x 1,52 (Harold / Daymer / Gustavo)',
+        'prefijos': ['RETIRO E INSTALACION', 'RETIRO E INSTALACIÓN', 'RETIRO Y/O INSTALACION',
+                     'RETIRO Y/O INSTALACIÓN', 'RETIRO O INSTALACION', 'INSTALACION DE MEDIDOR',
+                     'INSTALACIÓN DE MEDIDOR', 'RETIRO DE MEDIDOR'],
+    },
+    {
+        'nombre': 'VISITA / PREVISITA TECNICA (1 tecnico x 8 h)',
+        'precio': 108090.24,
+        'fuente': '1 tecnico x 8 h x $8.889 promedio x 1,52 (Harold / Daymer / Gustavo)',
+        'prefijos': ['PREVISITA', 'VISITA TECNICA', 'VISITA TÉCNICA'],
+    },
+    {
+        'nombre': 'MANTENIMIENTO DE TRANSFORMADOR / SUBESTACION (2 tecnicos x 8 h)',
+        'precio': 216180.48,
+        'fuente': '2 tecnicos x 8 h x $8.889 promedio x 1,52 (Harold / Daymer / Gustavo). '
+                  'Solo la mano de obra: si el trabajo lleva aceite, repuestos o pruebas de '
+                  'laboratorio, esos van como linea aparte (ver oferta TRAFOIL TR-23-04-26)',
+        'prefijos': ['MANTENIMIENTO A TRANSFORMADOR', 'MANTENIMIENTO A  TRANSFORMADOR',
+                     'MANTENIMIENTO TRANSFORMADOR', 'MANTENIMIENTO A SUBESTACION',
+                     'MANTENIMIENTO PREVENTIVO Y LIMPIEZA'],
+    },
+    {
+        'nombre': 'LIMPIEZA Y AJUSTE DE CONEXIONES (2 tecnicos x 8 h)',
+        'precio': 216180.48,
+        'fuente': '2 tecnicos x 8 h x $8.889 promedio x 1,52 (Harold / Daymer / Gustavo)',
+        # A proposito NO cubre "LIMPIEZA DE CELDA Y TRANSFORMADOR SECO ... SOPLADO
+        # NITROGENO": ese trabajo consume nitrogeno y no es solo mano de obra.
+        'prefijos': ['LIMPIEZA Y AJUSTE DE CONEXIONES'],
+    },
     {
         'nombre': 'CARROCANASTA AISLADA (todas sus variantes)',
         'precio': 1370529.28,
