@@ -50,6 +50,8 @@ function resumenGeneral() {
   rows.forEach((r) => { porEstado[r.estado] = (porEstado[r.estado] || 0) + 1; });
 
   const noViables = activas.filter((r) => r.semaforo === 'NO_VIABLE');
+  // Sin lineas de costo cargadas: su margen no es real y no debe leerse como rentabilidad.
+  const sinCostos = rows.filter((r) => r.semaforo === 'SIN_DATOS');
   const vencidas = rows.filter((r) => r.estadoPago === 'VENCIDO');
   const carteraVencida = vencidas.reduce((a, r) => a + (r.saldoPendiente || 0), 0);
   const carteraPorCobrar = rows.reduce((a, r) => a + (r.saldoPendiente || 0), 0);
@@ -64,6 +66,10 @@ function resumenGeneral() {
     margen_promedio_ponderado: redondear(margenPromedioPonderado, 4),
     cartera_por_cobrar: redondear(carteraPorCobrar),
     cartera_vencida: redondear(carteraVencida),
+    cantidad_sin_costos_cargados: sinCostos.length,
+    advertencia_sin_costos: sinCostos.length
+      ? `${sinCostos.length} cotizacion(es) no tienen materiales ni mano de obra cargados: su costo y su margen no son reales.`
+      : null,
     cantidad_no_viables: noViables.length,
     cotizaciones_no_viables: noViables.slice(0, 15).map(resumenCompacto),
     cantidad_cartera_vencida: vencidas.length,

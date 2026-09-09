@@ -141,10 +141,26 @@ function rentabilidadExtra(costeo, precioVenta, politica) {
   };
 }
 
-function evaluarSemaforo(costeoPresupuestado, politica, comparativo) {
+function evaluarSemaforo(costeoPresupuestado, politica, comparativo, sinCostosCargados = false) {
   const margen = costeoPresupuestado.margenPct;
   const objetivo = politica ? politica.pct_utilidad_objetivo : 0;
   const margenMin = politica ? politica.margen_minimo_aceptable : 0;
+
+  // Una cotizacion sin NINGUNA linea de materiales ni de mano de obra no es una
+  // cotizacion rentable: es una cotizacion a la que todavia no se le ha cargado
+  // el costo. Sin esta comprobacion, el costo daba casi 0, el margen daba ~100%
+  // y el semaforo la pintaba VIABLE en verde, que es justo la lectura contraria
+  // a la realidad (paso con 33 cotizaciones importadas de Siigo).
+  if (sinCostosCargados) {
+    return {
+      estado: 'SIN_DATOS',
+      mensaje: 'Esta cotización no tiene cargada ninguna línea de materiales ni de mano de obra, '
+        + 'así que su costo, su utilidad y su margen todavía no son reales. El margen del 100% que '
+        + 'arroja el cálculo solo refleja que no hay costos registrados, no que el trabajo sea rentable. '
+        + 'Cargue las líneas para poder evaluar la viabilidad.',
+      ajuste: null,
+    };
+  }
 
   let estado, mensaje, ajuste = null;
   if (costeoPresupuestado.utilidad >= 0 && margen >= objetivo) {
@@ -373,7 +389,10 @@ function calcularCotizacion({ cot, manoObra, materiales, parametros, politica, p
 
   const rentabilidad = rentabilidadExtra(costeoPresupuestado, cot.precio_venta, politica);
   const comparativo = compararPresupuestadoReal(costeoPresupuestado, costeoReal);
-  const semaforo = evaluarSemaforo(costeoPresupuestado, politica, comparativo);
+  // Sin lineas cargadas no hay costo real que evaluar: se distingue de una
+  // cotizacion que si tiene costos y da margen alto.
+  const sinCostosCargados = (!manoObra || manoObra.length === 0) && (!materiales || materiales.length === 0);
+  const semaforo = evaluarSemaforo(costeoPresupuestado, politica, comparativo, sinCostosCargados);
   const cartera = evaluarCartera(cot, politica, pagos);
   const flujoCaja = evaluarFlujoCaja(cot, materiales, manoObra, pagos, cxp);
 

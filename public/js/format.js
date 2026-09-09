@@ -33,5 +33,5 @@ export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 }
 
-export const SEMAFORO_LABEL = { VIABLE: 'Viable', VIABLE_CON_AJUSTE: 'Viable con ajuste', NO_VIABLE: 'No viable' };
-export const SEMAFORO_CLASS = { VIABLE: 'sem-viable', VIABLE_CON_AJUSTE: 'sem-ajuste', NO_VIABLE: 'sem-no-viable' };
+export const SEMAFORO_LABEL = { VIABLE: 'Viable', VIABLE_CON_AJUSTE: 'Viable con ajuste', NO_VIABLE: 'No viable', SIN_DATOS: 'Sin costos cargados' };
+export const SEMAFORO_CLASS = { VIABLE: 'sem-viable', VIABLE_CON_AJUSTE: 'sem-ajuste', NO_VIABLE: 'sem-no-viable', SIN_DATOS: 'sem-sin-datos' };

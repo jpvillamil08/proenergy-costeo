@@ -31,6 +31,19 @@ async function nombreClienteFactura(f) {
   return 'Cliente sin identificar';
 }
 
+// Vencimiento de una factura de Siigo. Se acepta f.due_date por si alguna vez
+// viniera en el primer nivel, pero la fuente real son las cuotas de f.payments.
+function fechaVencimiento(f) {
+  const fechas = [];
+  if (f && f.due_date) fechas.push(String(f.due_date).slice(0, 10));
+  for (const p of (f && Array.isArray(f.payments) ? f.payments : [])) {
+    if (p && p.due_date) fechas.push(String(p.due_date).slice(0, 10));
+  }
+  const validas = fechas.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+  if (!validas.length) return null;
+  return validas.sort()[validas.length - 1]; // la mas tardia
+}
+
 const upsertSql = `
   INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, sincronizado_en)
   VALUES (?,?,?,?,?,?,?,?,?,?, datetime('now'))
@@ -71,10 +84,19 @@ module.exports = (router) => {
         const saldo = Number(f.balance) || 0;
         const anulada = f.canceled ? 1 : 0;
         const estado = anulada ? 'Anulada' : (saldo <= 0.5 ? 'Pagada' : 'Pendiente');
-        // due_date: fecha de vencimiento real que reporta Siigo para la factura, si
-        // la trae. No se inventa una fecha aqui: si Siigo no la reporta, queda NULL
-        // y el modulo de cartera asume el plazo de credito estandar vigente.
-        const vencimiento = f.due_date ? String(f.due_date).slice(0, 10) : null;
+        // Fecha de vencimiento real de la factura.
+        //
+        // OJO: Siigo NO la trae en el primer nivel del objeto. Antes se leia
+        // f.due_date, que siempre es undefined, asi que las 435 facturas quedaron
+        // guardadas sin vencimiento y la cartera caia siempre en el plazo asumido
+        // de 30 dias desde la emision: eso inflaba la cartera vencida (marcaba el
+        // 77% del saldo como vencido). La fecha real viene en cada cuota, dentro
+        // de f.payments[].due_date.
+        //
+        // Con varias cuotas se toma la MAS TARDIA: es la fecha en que la factura
+        // deberia estar totalmente pagada, y usarla evita marcar como vencido un
+        // saldo que todavia tiene cuotas por vencer.
+        const vencimiento = fechaVencimiento(f);
         upsert.run(
           String(f.id), f.name || String(f.number || f.id), await nombreClienteFactura(f),
           (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,

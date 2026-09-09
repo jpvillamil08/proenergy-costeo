@@ -84,6 +84,7 @@ tbody tr:hover { background: rgba(31,78,95,0.04); }
 tr.clickable { cursor: pointer; }
 
 /* ---- Badges / semaforo ---- */
+.sem-sin-datos { background: #e5e7eb; color: #4b5563; border: 1px solid #9ca3af; }
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .badge.estado-Borrador { background: #eef0ef; color: #52514e; }
 .badge.estado-Enviada { background: #e6eefb; color: #1c5cab; }
