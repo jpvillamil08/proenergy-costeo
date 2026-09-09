@@ -98,7 +98,65 @@ PRECIOS = [
         'nombre': 'CABLE CU N°12 BLANCO',
         'precio': 2655.27,
         'fuente': 'CENTELSA 200354CKBL C.THHN-THWN-2 12 BLANCO (presupuesto)',
-        'variantes': ['CABLE CU N°12 BLANCO centelsa'],
+        # "Cable Blanco CU # 12" es la misma cosa escrita distinto en otras cotizaciones.
+        'variantes': ['CABLE CU N°12 BLANCO centelsa', 'Cable Blanco CU # 12'],
+    },
+    # ---- segunda tanda ----
+    {
+        'nombre': 'CABLE CU 2/0 DESNUDO',
+        'precio': 48943.38,
+        'fuente': 'CENTELSA 213792CK C.DESNUDO 2/0 AWG COBRE (presupuesto)',
+        'variantes': ['Cable Desnudo CU 2/0'],
+    },
+    {
+        'nombre': 'TERMINAL PONCHABLE #2',
+        'precio': 3883.66,
+        'fuente': 'ELECTRICOS INDUSTRIAL 98130 TUBULAR PONCHABLE 2AWG (presupuesto JUL-2026)',
+        'variantes': ['Terminal ponchable #2'],
+    },
+    {
+        'nombre': 'ARANDELA CURVO-CUADRADA 5/8',
+        'precio': 1952.17,
+        'fuente': 'HERRAJES 135 ARANDELA CUADRADA G.C. CURVA 2-1/4X5/8" 3/16 (presupuesto)',
+        'variantes': ['ARANDELAS CURVO-CUADRADAS DE 5/8'],
+    },
+    # ---- tercera tanda: precios de tienda colombiana ----
+    # OJO: este precio es de venta al publico (Inter Electricas S.A.S., Bogota),
+    # no de lista de distribuidor como los anteriores. Sirve como costo mientras
+    # no haya cotizacion del mayorista, pero probablemente se pueda conseguir mas
+    # barato comprando al por mayor.
+    {
+        'nombre': 'TERMINAL DE OJO #12 AWG AMARILLO',
+        'precio': 230,
+        'fuente': 'Inter Electricas: terminal U aislado cable 10-12 AWG amarillo, ojo 1/8 '
+                  '(interelectricas.com.co/bornas/13331) - precio al publico',
+        'variantes': ['Terminal de Ojo #12 AWG Amarillo', 'TERMINAL DE OJO #12 AWG AMARILLO'],
+    },
+]
+
+# La variante "CABLE CU 7 HILOS N°2 DESNUDO" se agrega al bloque del cable N°2:
+# el proveedor lo describe literalmente como "C.DESNUDO 2 AWG COBRE - 7HILOS".
+for _p in PRECIOS:
+    if _p['nombre'] == 'CABLE CU N°2 DESNUDO':
+        _p['variantes'].append('CABLE CU 7 HILOS  N°2 DESNUDO')
+        _p['variantes'].append('CABLE CU 7 HILOS N°2 DESNUDO')
+
+
+# Reglas por PREFIJO: para grupos donde la descripcion cambia en cada cotizacion
+# (van enumerando lo que incluye la bolsa) pero el precio es el mismo. Se aplican
+# solo cuando la descripcion EMPIEZA por el prefijo, no si lo menciona en medio.
+PRECIOS_POR_PREFIJO = [
+    {
+        'nombre': 'ACCESORIOS CONSUMIBLES (todas sus variantes)',
+        'precio': 120000,
+        'fuente': 'Valor global definido por PROENERGY (no es un producto de catalogo)',
+        'prefijos': ['ACCESORIO CONSUMIBLE', 'ACCESORIOS CONSUMIBLES'],
+    },
+    {
+        'nombre': 'ELEMENTOS PARA CONEXION EN MEDIA TENSION (todas sus variantes)',
+        'precio': 120000,
+        'fuente': 'Valor global definido por PROENERGY (no es un producto de catalogo)',
+        'prefijos': ['ELEMENTOS PARA CONEXION EN MEDIA TENSION'],
     },
 ]
 
@@ -115,6 +173,18 @@ def main():
     for p in PRECIOS:
         for v in p['variantes']:
             objetivo[norm(v)] = p
+    prefijos = [(norm(pref), ficha) for ficha in PRECIOS_POR_PREFIJO for pref in ficha['prefijos']]
+
+    def ficha_para(descripcion):
+        """Precio que corresponde a esta descripcion: primero coincidencia exacta,
+        despues las reglas por prefijo."""
+        n = norm(descripcion)
+        if n in objetivo:
+            return objetivo[n]
+        for pref, ficha in prefijos:
+            if n.startswith(pref):
+                return ficha
+        return None
 
     api = inventario.ClienteApi(cfg['base_url'])
     print(f"Conectando a {cfg['base_url']} ...")
@@ -132,7 +202,7 @@ def main():
             print(f"  aviso: no se pudo leer {res.get('numero')}: {e}")
             continue
         for m in det.get('materiales') or []:
-            ficha = objetivo.get(norm(m.get('descripcion')))
+            ficha = ficha_para(m.get('descripcion'))
             if not ficha:
                 continue
             actual = m.get('costo_unitario') or 0
