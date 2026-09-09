@@ -69,6 +69,19 @@ module.exports = (router) => {
     sendJson(res, 200, await sync.cargarMateriales({ limit, usuario: user }));
   }));
 
+  // Deduce el costo de las lineas que quedaron en $0 a partir del precio de
+  // venta que la cotizacion tiene en Siigo, restandole el margen indicado.
+  // Simula por defecto: hay que pasar ?ejecutar=1 para que escriba.
+  //   ?margen=30   porcentaje a descontar del precio de venta (por defecto 30)
+  //   ?limite=N    procesa solo las primeras N cotizaciones (para probar)
+  router.post('/api/siigo/materiales/costo-desde-precio', withAdmin(async ({ res, query, user }) => {
+    const margen = Math.min(Math.max(Number(query.margen ?? 30), 0), 95) / 100;
+    const limite = query.limite ? Number(query.limite) : null;
+    sendJson(res, 200, await sync.costosDesdePrecioDeVenta({
+      margen, limite, soloSimular: query.ejecutar !== '1', usuario: user,
+    }));
+  }));
+
   // Estado del programador diario: si esta vivo, cuando corre la proxima vez y
   // como fue la ultima corrida.
   router.get('/api/siigo/sync/estado', withAdmin(async ({ res }) => {

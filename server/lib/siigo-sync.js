@@ -101,8 +101,123 @@ async function analizarCotizacion(cot, catalogo) {
   return items.map((it) => {
     const descripcion = it.description || it.name || it.code || 'Item sin descripción';
     const cantidad = Number(it.quantity ?? it.qty ?? 1) || 1;
-    return { descripcionOriginal: descripcion, cantidad, match: mejorMatch(descripcion, catalogo) };
+    // precioVenta: lo que se le cobra al cliente por unidad. Sirve para deducir
+    // el costo cuando no se consigue el precio del proveedor (ver
+    // costosDesdePrecioDeVenta).
+    const precioVenta = Number(it.price ?? it.unit_price ?? 0) || 0;
+    return {
+      descripcionOriginal: descripcion, cantidad, precioVenta, codigo: it.code || null,
+      match: mejorMatch(descripcion, catalogo),
+    };
   });
+}
+
+// ---------------------------------------------------------------- costo desde el precio
+
+// Deduce el costo de las lineas que quedaron en $0 a partir del precio de venta
+// que la propia cotizacion tiene en Siigo, restandole el margen indicado.
+//
+// Por que existe: para muchos items no se consigue el precio del proveedor, pero
+// SI se sabe a cuanto se vendieron. Si la empresa cotiza con un margen conocido,
+// el costo se puede despejar de ahi. Es una aproximacion, no el costo real de la
+// factura de compra, y por eso se registra en la auditoria diciendo de donde
+// salio.
+//
+// El cruce entre la linea guardada y el item de Siigo se hace por descripcion
+// normalizada; si una cotizacion repite la misma descripcion en varias lineas,
+// se emparejan en orden.
+async function costosDesdePrecioDeVenta({ margen = 0.30, soloSimular = true, usuario = null, limite = null } = {}) {
+  const normaliza = (s) => String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/^\s*\[REVISAR\]\s*/, '')
+    .replace(/\s+/g, ' ').trim();
+
+  let cots = db.prepare(
+    `SELECT DISTINCT c.id, c.numero, c.siigo_quotation_id
+     FROM cotizaciones c
+     JOIN cotizacion_materiales m ON m.cotizacion_id = c.id
+     WHERE c.siigo_quotation_id IS NOT NULL
+       AND (m.costo_unitario IS NULL OR m.costo_unitario <= 0)
+     ORDER BY c.id`
+  ).all();
+  if (limite) cots = cots.slice(0, limite);
+
+  const update = db.prepare('UPDATE cotizacion_materiales SET costo_unitario = ? WHERE id = ?');
+  const lineasDe = db.prepare(
+    `SELECT id, descripcion, cantidad_presupuestada FROM cotizacion_materiales
+     WHERE cotizacion_id = ? AND (costo_unitario IS NULL OR costo_unitario <= 0) ORDER BY orden, id`
+  );
+
+  let lineasActualizadas = 0;
+  let cotizacionesTocadas = 0;
+  let sinPrecioEnSiigo = 0;
+  let sinCorrespondencia = 0;
+  const errores = [];
+  const detalle = [];
+
+  for (const cot of cots) {
+    let items;
+    try {
+      const q = await siigo.obtenerCotizacion(cot.siigo_quotation_id);
+      items = Array.isArray(q.items) ? q.items : [];
+    } catch (e) {
+      errores.push({ numero: cot.numero, error: e.message });
+      continue;
+    }
+    // Agrupa los precios de Siigo por descripcion normalizada
+    const porDescripcion = new Map();
+    for (const it of items) {
+      const d = normaliza(it.description || it.name || it.code);
+      const precio = Number(it.price ?? it.unit_price ?? 0) || 0;
+      if (!d) continue;
+      if (!porDescripcion.has(d)) porDescripcion.set(d, []);
+      porDescripcion.get(d).push(precio);
+    }
+
+    let tocadas = 0;
+    for (const linea of lineasDe.all(cot.id)) {
+      const d = normaliza(linea.descripcion);
+      const cola = porDescripcion.get(d);
+      if (!cola || !cola.length) { sinCorrespondencia++; continue; }
+      const precioVenta = cola.shift();
+      if (!precioVenta || precioVenta <= 0) { sinPrecioEnSiigo++; continue; }
+      const costo = Math.round(precioVenta * (1 - margen) * 100) / 100;
+      if (!soloSimular) update.run(costo, linea.id);
+      lineasActualizadas++;
+      tocadas++;
+      if (detalle.length < 40) {
+        detalle.push({
+          cotizacion: cot.numero,
+          descripcion: String(linea.descripcion).slice(0, 70),
+          precio_venta_siigo: precioVenta,
+          costo_calculado: costo,
+        });
+      }
+    }
+    if (tocadas) {
+      cotizacionesTocadas++;
+      if (!soloSimular) {
+        registrar({
+          usuario, accion: 'EDITAR', entidad: 'cotizacion_materiales', entidadId: cot.id,
+          campo: 'costo_unitario',
+          valorNuevo: `${tocadas} linea(s) costeadas al ${Math.round((1 - margen) * 100)}% del precio de venta de Siigo (margen ${Math.round(margen * 100)}%)`,
+        });
+      }
+    }
+    await pausa(PAUSA_ENTRE_LLAMADAS_MS);
+  }
+
+  return {
+    simulacion: soloSimular,
+    margen_aplicado: margen,
+    cotizaciones_revisadas: cots.length,
+    cotizaciones_con_cambios: cotizacionesTocadas,
+    lineas_actualizadas: lineasActualizadas,
+    lineas_sin_precio_en_siigo: sinPrecioEnSiigo,
+    lineas_sin_correspondencia: sinCorrespondencia,
+    errores,
+    muestra: detalle,
+  };
 }
 
 // ---------------------------------------------------------------- materiales
@@ -281,5 +396,5 @@ async function sincronizar({ dias = 30, usuario = null, parametrosVigenteEn, pol
 module.exports = {
   cotizacionesPendientes, totalPendientes, catalogoTokenizado, mejorMatch,
   analizarCotizacion, cargarMateriales, importarCotizacion, importarNuevas,
-  sincronizar, nombreClientePorId,
+  sincronizar, nombreClientePorId, costosDesdePrecioDeVenta,
 };
