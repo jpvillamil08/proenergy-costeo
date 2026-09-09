@@ -6,11 +6,27 @@ const { todayStr, addDays, diffDays } = require('../lib/dates');
 const siigo = require('../lib/siigo');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const vinculo = require('../lib/facturas-vinculo');
+const sync = require('../lib/siigo-sync');
 
-// Nombre de cliente de una factura de Siigo. El objeto "customer" que viene
-// embebido en cada factura de /v1/invoices trae la misma forma que el cliente
-// completo de /v1/customers, asi que reutilizamos siigo.nombreCliente().
-function nombreClienteFactura(f) {
+// Nombre de cliente de una factura de Siigo.
+//
+// OJO: el objeto "customer" embebido en cada factura de /v1/invoices NO trae el
+// nombre, solo {id, identification, branch_office}. Antes se le pasaba directo a
+// siigo.nombreCliente(), que al no encontrar nombre caia en el ultimo caso y
+// devolvia la identificacion: por eso todas las facturas quedaron guardadas con
+// el NIT ("804001062") en vez del nombre del cliente, y asi se veian en la
+// pantalla de Facturas y en el top de clientes de Estadisticas.
+//
+// El nombre real hay que pedirlo a /v1/customers/{id}; sync.nombreClientePorId
+// ya lo hace y cachea el resultado, asi que un cliente se consulta una sola vez
+// por corrida aunque tenga cincuenta facturas.
+async function nombreClienteFactura(f) {
+  const id = f && f.customer && f.customer.id;
+  if (id) {
+    const nombre = await sync.nombreClientePorId(id);
+    if (nombre && !/^\s*\d+\s*$/.test(nombre)) return nombre;
+  }
+  // Sin id o sin nombre utilizable: al menos se conserva la identificacion.
   if (f && f.customer) return siigo.nombreCliente(f.customer);
   return 'Cliente sin identificar';
 }
@@ -60,7 +76,7 @@ module.exports = (router) => {
         // y el modulo de cartera asume el plazo de credito estandar vigente.
         const vencimiento = f.due_date ? String(f.due_date).slice(0, 10) : null;
         upsert.run(
-          String(f.id), f.name || String(f.number || f.id), nombreClienteFactura(f),
+          String(f.id), f.name || String(f.number || f.id), await nombreClienteFactura(f),
           (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,
           f.observations || null
         );
