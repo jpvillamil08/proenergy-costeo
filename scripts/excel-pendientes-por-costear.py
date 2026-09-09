@@ -71,6 +71,108 @@ GRUPOS = [
 ]
 
 
+def estado_por_cotizacion(api):
+    """Para cada numero de cotizacion: si hay evidencia de que se ejecuto y cual
+    es su orden de compra.
+
+    De donde sale cada cosa:
+      - EJECUTADA (facturada): la cotizacion tiene una factura de Siigo vinculada.
+        Es la evidencia dura, pero hoy solo hay 11 asi.
+      - PROBABLE (factura del mismo cliente por el mismo monto): no hay vinculo
+        explicito, pero existe una factura del mismo cliente cuyo valor coincide
+        con el precio de la cotizacion (con o sin IVA). Es una inferencia.
+      - SIN EVIDENCIA: ni lo uno ni lo otro. NO significa que no se haya
+        ejecutado: el estado de las cotizaciones en la app sigue en "Borrador"
+        para las 225, asi que por ahi no hay informacion.
+
+    La orden de compra se lee de las observaciones de la factura correspondiente,
+    que es donde la empresa la anota ("ORDEN DE COMPRA 2356").
+    """
+    import re as _re
+    IVA = 0.19
+    facturas = api.get('/api/facturas?desde=2000-01-01&hasta=2030-12-31') or []
+    cots = api.get('/api/cotizaciones') or []
+    por_id = {c['id']: c for c in cots}
+
+    def oc_de(f):
+        m = _re.search(r'(?:O\.?\s?C\.?|ORDEN\s+DE\s+COMPRA)\s*\.?\s*(?:N[o°.]*\s*)?(\d{3,6})',
+                       str(f.get('observaciones') or ''), _re.I)
+        return m.group(1) if m else None
+
+    info = {}
+    # 1) Vinculo explicito factura -> cotizacion
+    for f in facturas:
+        cid = f.get('cotizacion_id')
+        if not cid or cid not in por_id:
+            continue
+        num = por_id[cid]['numero']
+        d = info.setdefault(num, {'estado': None, 'oc': set(), 'facturas': set()})
+        d['estado'] = 'EJECUTADA (facturada)'
+        d['facturas'].add(f.get('numero'))
+        if oc_de(f):
+            d['oc'].add(oc_de(f))
+
+    # 2) Inferencia por cliente + monto para las que no tienen vinculo
+    def norm_cli(x):
+        x = _re.sub(r'[^A-Z0-9 ]', ' ', str(x or '').upper())
+        # El limite de palabra es imprescindible: sin el, "DE" borraria letras
+        # dentro de los nombres y "DELTA" quedaria convertido en "LTA".
+        x = _re.sub(r'\b(SAS|SA|ESP|LTDA|CIA|DE|DEL|LA|EL|LOS|LAS|Y)\b', ' ', x)
+        return set(t for t in x.split() if len(t) >= 3)
+
+    fac_por_cliente = {}
+    for f in facturas:
+        for t in norm_cli(f.get('cliente')):
+            fac_por_cliente.setdefault(t, []).append(f)
+
+    for c in cots:
+        num = c['numero']
+        if num in info and info[num]['estado']:
+            continue
+        precio = float(c.get('precio_venta') or 0)
+        if not precio:
+            continue
+        tokens = norm_cli(c.get('cliente'))
+        vistas, candidatas = set(), []
+        for t in tokens:
+            for f in fac_por_cliente.get(t, []):
+                if id(f) in vistas:
+                    continue
+                vistas.add(id(f))
+                if len(norm_cli(f.get('cliente')) & tokens) < max(1, len(tokens) // 2):
+                    continue
+                total = float(f.get('total') or 0)
+                if not total:
+                    continue
+                d1 = abs(total - precio) / max(total, precio)
+                d2 = abs(total - precio * (1 + IVA)) / max(total, precio * (1 + IVA))
+                if min(d1, d2) <= 0.02:
+                    candidatas.append(f)
+        if candidatas:
+            d = info.setdefault(num, {'estado': None, 'oc': set(), 'facturas': set()})
+            d['estado'] = 'PROBABLE (factura del mismo cliente por el mismo monto)'
+            for f in candidatas[:3]:
+                d['facturas'].add(f.get('numero'))
+                if oc_de(f):
+                    d['oc'].add(oc_de(f))
+    return info
+
+
+def resumen_estado(numeros, info):
+    """Junta el estado de todas las cotizaciones donde aparece un elemento."""
+    ejec = [n for n in numeros if info.get(n, {}).get('estado', '').startswith('EJECUTADA')]
+    prob = [n for n in numeros if info.get(n, {}).get('estado', '').startswith('PROBABLE')]
+    ocs = sorted({oc for n in numeros for oc in info.get(n, {}).get('oc', set())})
+    if ejec:
+        est = f'EJECUTADA ({len(ejec)} de {len(numeros)} facturada)'
+    elif prob:
+        est = f'PROBABLE ejecutada ({len(prob)} de {len(numeros)})'
+    else:
+        est = 'SIN EVIDENCIA'
+    oc = ('OC ' + ', '.join(ocs[:6])) if ocs else 'SIN ORDEN DE COMPRA'
+    return est, oc
+
+
 def grupo_de(descripcion):
     n = norm(descripcion)
     for etiqueta, claves in GRUPOS:
@@ -79,9 +181,11 @@ def grupo_de(descripcion):
     return ''
 
 
-COLUMNAS = ['PRECIO_NUEVO', 'NOTAS', 'GRUPO', 'descripcion', 'n_cotizaciones',
-            'cantidad_total', 'unidad', 'primera_fecha', 'ultima_fecha', 'cotizaciones']
-ANCHOS = {'PRECIO_NUEVO': 15, 'NOTAS': 26, 'GRUPO': 34, 'descripcion': 72,
+COLUMNAS = ['PRECIO_NUEVO', 'NOTAS', 'EJECUCION', 'ORDEN_COMPRA', 'GRUPO', 'descripcion',
+            'n_cotizaciones', 'cantidad_total', 'unidad', 'primera_fecha', 'ultima_fecha',
+            'cotizaciones']
+ANCHOS = {'PRECIO_NUEVO': 15, 'NOTAS': 26, 'EJECUCION': 30, 'ORDEN_COMPRA': 34,
+          'GRUPO': 34, 'descripcion': 72,
           'n_cotizaciones': 9, 'cantidad_total': 11, 'unidad': 8,
           'primera_fecha': 12, 'ultima_fecha': 12, 'cotizaciones': 40}
 
@@ -112,11 +216,16 @@ def main():
 
     agrupado = inv.agrupar(detalle, catalogo)
     sin = [g for g in agrupado if g['SIN_PRECIO'] == 'SI']
+    print('Cruzando con facturas para saber que se ejecuto...')
+    info = estado_por_cotizacion(api)
 
     materiales, servicios, codigos = [], [], []
     for g in sin:
+        numeros = [x.strip() for x in str(g['cotizaciones'] or '').split(',') if x.strip()]
+        est, oc = resumen_estado(numeros, info)
         fila = {
-            'PRECIO_NUEVO': None, 'NOTAS': None, 'GRUPO': grupo_de(g['descripcion']),
+            'PRECIO_NUEVO': None, 'NOTAS': None, 'EJECUCION': est, 'ORDEN_COMPRA': oc,
+            'GRUPO': grupo_de(g['descripcion']),
             'descripcion': g['descripcion'], 'n_cotizaciones': g['n_cotizaciones'],
             'cantidad_total': g['cantidad_total'], 'unidad': g['unidad'],
             'primera_fecha': g['primera_fecha'], 'ultima_fecha': g['ultima_fecha'],
@@ -184,7 +293,7 @@ def escribir(materiales, servicios, codigos):
                 alterna = not alterna
                 grupo_prev = f['GRUPO']
             if alterna and f['GRUPO']:
-                for i in range(3, len(COLUMNAS) + 1):
+                for i in range(5, len(COLUMNAS) + 1):
                     ws.cell(row=n, column=i).fill = ALTERNO
             ws.cell(row=n, column=1).fill = LLENAR
             ws.cell(row=n, column=2).fill = LLENAR
