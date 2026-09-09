@@ -38,6 +38,14 @@ function cotizacionesIndexadas() {
     .sort((a, b) => b.norm.length - a.norm.length);
 }
 
+// Forma abreviada que se usa en la practica: "COT 88", "COT-88", "COTIZACION 88",
+// "COT. N 88". Se refiere a la cotizacion C-1-88. Se captura el numero suelto y
+// despues se comprueba contra las cotizaciones que existen: si no hay ninguna
+// que termine en ese numero, no se vincula.
+// OJO: "O.C. 2189" / "OC2191" es ORDEN DE COMPRA del cliente, NO una cotizacion.
+// Por eso el patron exige "COT" y no acepta "OC".
+const RE_COT_CORTA = /(?:^|-)COT(?:IZACION|IZACIONES)?-?(?:N-?)?(?:O-?)?(\d{1,5})(?:$|-)/g;
+
 // Busca en el texto los numeros de cotizacion que realmente existen.
 // Devuelve todas las coincidencias distintas encontradas.
 function buscarCotizaciones(observaciones, indice) {
@@ -45,6 +53,8 @@ function buscarCotizaciones(observaciones, indice) {
   if (!texto) return [];
   const encontradas = [];
   const yaCubierto = [];
+
+  // 1) Numero completo tal cual aparece en la base ("C-1-231")
   for (const c of indice) {
     // Se exige que el numero aparezca delimitado, no como parte de otro numero
     // mas largo: "C-1-23" no debe coincidir dentro de "C-1-231".
@@ -55,6 +65,24 @@ function buscarCotizaciones(observaciones, indice) {
     encontradas.push(c);
     yaCubierto.push(c.norm);
   }
+
+  // 2) Forma abreviada "COT 88" -> se resuelve contra las cotizaciones reales.
+  //    Si el numero suelto corresponde a mas de una cotizacion, se descarta por
+  //    ambiguo en vez de elegir al azar.
+  RE_COT_CORTA.lastIndex = 0;
+  let m;
+  while ((m = RE_COT_CORTA.exec(texto)) !== null) {
+    const suelto = m[1].replace(/^0+/, '') || m[1];
+    const candidatas = indice.filter((c) => {
+      const cola = c.norm.split('-').pop();
+      return cola.replace(/^0+/, '') === suelto;
+    });
+    if (candidatas.length !== 1) continue;
+    const c = candidatas[0];
+    if (encontradas.some((e) => e.id === c.id)) continue;
+    encontradas.push(c);
+  }
+
   return encontradas;
 }
 
