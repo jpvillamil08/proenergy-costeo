@@ -196,6 +196,34 @@ def sin_precio(valor):
     return n is None or n <= 0
 
 
+# La carga automatica desde Siigo mete TODOS los items como material 'Directo',
+# porque Siigo no distingue. Pero muchos son servicios, mano de obra o alquiler
+# de equipo, y esos no tienen precio de lista: hay que costearlos con criterio
+# propio. Separarlos evita perder tiempo buscando en catalogos de proveedor algo
+# que nunca va a estar ahi.
+PALABRAS_SERVICIO = (
+    'mano de obra', 'instalacion', 'desinstalacion', 'montaje', 'desmontaje',
+    'apertura', 'cierre', 'previsita', 'visita', 'gestion', 'tramite', 'descargo',
+    'alquiler', 'arriendo', 'carrocanasta', 'grua', 'transporte', 'traslado',
+    'revision', 'mantenimiento', 'calibracion', 'prueba', 'ensayo', 'asesoria',
+    'supervision', 'cuadrilla', 'tecnico', 'ingeniero', 'certificacion',
+    'diagnostico', 'inspeccion', 'puesta en marcha', 'capacitacion', 'servicio',
+    'conexion', 'desconexion', 'cambio de', 'retiro', 'adecuacion', 'obra civil',
+)
+# Bolsas de varios items sin detallar: no son un producto de catalogo, se costean
+# como un global.
+PALABRAS_GLOBAL = ('accesorios consumibles', 'consumibles generales', 'varios', 'imprevistos')
+
+
+def clasificar_naturaleza(descripcion):
+    d = normalizar(descripcion)
+    if any(p in d for p in PALABRAS_GLOBAL):
+        return 'GLOBAL (bolsa de varios)'
+    if any(p in d for p in PALABRAS_SERVICIO):
+        return 'SERVICIO / MANO DE OBRA'
+    return 'Material'
+
+
 def moda(valores):
     """Valor mas repetido. Con empate gana el mayor, para no subestimar el costo."""
     if not valores:
@@ -328,6 +356,7 @@ def agrupar(filas, catalogo_por_norm):
         fechas = sorted(g['fechas'])
         resultado.append({
             'SIN_PRECIO': 'SI' if not precios else 'No',
+            'NATURALEZA': clasificar_naturaleza(g['descripcion']) if tipo == 'Material' else 'SERVICIO / MANO DE OBRA',
             'tipo': tipo,
             'descripcion': g['descripcion'],
             'unidad': (catalogo or {}).get('unidad', ''),
@@ -347,14 +376,16 @@ def agrupar(filas, catalogo_por_norm):
 
     # Sin precio primero; dentro de cada bloque, lo que aparece en mas
     # cotizaciones va arriba (mayor impacto al completarlo).
-    resultado.sort(key=lambda r: (r['SIN_PRECIO'] != 'SI', -r['n_cotizaciones'], r['descripcion'].lower()))
+    orden_nat = {'Material': 0, 'GLOBAL (bolsa de varios)': 1, 'SERVICIO / MANO DE OBRA': 2}
+    resultado.sort(key=lambda r: (r['SIN_PRECIO'] != 'SI', orden_nat.get(r['NATURALEZA'], 3),
+                                  -r['n_cotizaciones'], r['descripcion'].lower()))
     return resultado
 
 
 # ---------------------------------------------------------------- salidas
 
 COLUMNAS_AGRUPADO = [
-    'SIN_PRECIO', 'tipo', 'descripcion', 'unidad', 'n_cotizaciones', 'cantidad_total',
+    'SIN_PRECIO', 'NATURALEZA', 'tipo', 'descripcion', 'unidad', 'n_cotizaciones', 'cantidad_total',
     'primera_fecha', 'ultima_fecha', 'precio_actual_mas_usado', 'precios_distintos',
     'precio_catalogo', 'proveedor_catalogo', 'PRECIO_NUEVO', 'NOTAS',
     'cotizaciones', 'marcado_revisar_siigo',
@@ -368,7 +399,7 @@ COLUMNAS_DETALLE = [
 ]
 
 ANCHOS_AGRUPADO = {
-    'SIN_PRECIO': 11, 'tipo': 13, 'descripcion': 52, 'unidad': 8, 'n_cotizaciones': 14,
+    'SIN_PRECIO': 11, 'NATURALEZA': 24, 'tipo': 13, 'descripcion': 52, 'unidad': 8, 'n_cotizaciones': 14,
     'cantidad_total': 14, 'primera_fecha': 13, 'ultima_fecha': 13,
     'precio_actual_mas_usado': 20, 'precios_distintos': 24, 'precio_catalogo': 16,
     'proveedor_catalogo': 26, 'PRECIO_NUEVO': 15, 'NOTAS': 30, 'cotizaciones': 40,
