@@ -215,6 +215,37 @@ PRECIOS_POR_PREFIJO = [
         # NITROGENO": ese trabajo consume nitrogeno y no es solo mano de obra.
         'prefijos': ['LIMPIEZA Y AJUSTE DE CONEXIONES'],
     },
+    # ---- ultimas lineas que quedaron sin costo ----
+    # Sus items no traian precio en Siigo, asi que no se pudieron despejar del
+    # precio de venta. Se resuelven con las listas del proveedor y con la oferta
+    # de TRAFOIL TR-23-04-26 que entrego PROENERGY.
+    {
+        'nombre': 'CORAZA LT 4"',
+        'precio': 67794,
+        'fuente': 'Metal Coraza - Lista LT Industrial, 4" = $67.794/metro',
+        'prefijos': ['CORAZA LT DE 4', 'CORAZA LT 4'],
+    },
+    {
+        'nombre': 'CONECTOR LT 4"',
+        'precio': 45918.24,
+        'fuente': 'COR-ACERO CORAZA LT 4" (lista de precios). Conector de la misma medida',
+        'prefijos': ['CONECTOR LT DE 4', 'CONECTOR LT 4'],
+    },
+    {
+        'nombre': 'TABLERO DE DISTRIBUCION 125 A',
+        'precio': 254650,
+        'fuente': 'TABLERO TQ SP6-SQ 125 A (lista de precios del proveedor)',
+        'prefijos': ['TABLERO DE DISTRIBUCION CON PROTECCION DE 125',
+                     'TABLERO DE DISTRIBUCION 125'],
+    },
+    {
+        'nombre': 'PRUEBAS ELECTRICAS (relacion de transformacion y resistencia de aislamiento)',
+        'precio': 1295500,
+        'fuente': 'Oferta TRAFOIL SAS TR-23-04-26 (11/abr/2026), item 1: pruebas electricas '
+                  'global $1.295.500. Es lo que un tercero le cobra a PROENERGY, o sea el costo',
+        'prefijos': ['PRUEBA RELACION DE TRANSFORMACION', 'PRUEBAS RELACION DE TRANSFORMACION',
+                     'PRUEBA DE RELACION DE TRANSFORMACION'],
+    },
     # ---- materiales con precio real encontrado en las listas del proveedor ----
     # Estos salieron de las busquedas manuales en el catalogo de Felix Torres.
     # Se ponen aqui, y no en el estimador, porque son precios reales de lista.
