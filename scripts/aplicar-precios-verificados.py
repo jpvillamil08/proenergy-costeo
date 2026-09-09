@@ -158,6 +158,28 @@ PRECIOS_POR_PREFIJO = [
         'fuente': 'Valor global definido por PROENERGY (no es un producto de catalogo)',
         'prefijos': ['ELEMENTOS PARA CONEXION EN MEDIA TENSION'],
     },
+    # Servicio de carrocanasta: se costea armando la cuadrilla de un dia, con las
+    # tarifas que ya estan cargadas en Trabajadores. Formula definida por
+    # PROENERGY el 2026-09-09:
+    #   Silfrido Meza (liniero)   8 h x $13.125 x 1,52 =   $159.600
+    #   Angel Mejia   (liniero)   8 h x $13.125 x 1,52 =   $159.600
+    #   Sixto Ruiz    (conductor) 8 h x  $8.333 x 1,52 =   $101.329
+    #   Liniero externo                                    $300.000
+    #   Gasolina + prestamo del carrocanasta               $650.000
+    #                                              TOTAL $1.370.529
+    # El 1,52 es el factor prestacional de los tres, que es lo que realmente le
+    # cuesta a la empresa un trabajador interno (mismo criterio que usa calc.js).
+    {
+        'nombre': 'CARROCANASTA AISLADA (todas sus variantes)',
+        'precio': 1370529.28,
+        'fuente': 'Cuadrilla de un dia: Silfrido 8h + Angel 8h + Sixto 8h (x1,52) '
+                  '+ $300.000 liniero externo + $650.000 gasolina y prestamo del carro',
+        'prefijos': ['CARROCANASTA', 'CARRO CANASTA'],
+        # La formula es para 13,2 kV. Hay una variante a 34,5 kV, que exige
+        # linieros certificados a esa tension y no cuesta lo mismo: se excluye
+        # para que la coticen aparte en vez de heredar un precio que no le toca.
+        'excluir_si_contiene': ['34,5', '34.5', '34 5'],
+    },
 ]
 
 
@@ -182,8 +204,11 @@ def main():
         if n in objetivo:
             return objetivo[n]
         for pref, ficha in prefijos:
-            if n.startswith(pref):
-                return ficha
+            if not n.startswith(pref):
+                continue
+            if any(x in n for x in [norm(e) for e in ficha.get('excluir_si_contiene', [])]):
+                continue
+            return ficha
         return None
 
     api = inventario.ClienteApi(cfg['base_url'])
