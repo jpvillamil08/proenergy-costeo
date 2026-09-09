@@ -55,6 +55,10 @@ function serveStatic(req, res, pathname) {
   return true;
 }
 
+// Tareas automaticas: sincronizacion diaria con Siigo a las 7 p.m. hora Colombia.
+// Ver server/lib/scheduler.js.
+require('./lib/scheduler').iniciar();
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/print/')) {

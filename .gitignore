@@ -6,3 +6,5 @@ server/data/
 *.db-shm
 .env
 npm-debug.log*
+reportes/
+__pycache__/
