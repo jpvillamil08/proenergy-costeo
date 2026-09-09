@@ -237,3 +237,6 @@ details.desglose th, details.desglose td { font-size: 12.5px; padding: 6px 12px;
   .asis-panel { right: 16px; left: 16px; width: auto; bottom: 82px; }
   .asis-fab { right: 16px; bottom: 16px; }
 }
+
+/* Marca de "sin dato" en las tablas: presente pero sin robar atencion */
+.tenue { color: #9ca3af; }

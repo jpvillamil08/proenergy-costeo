@@ -44,13 +44,40 @@ function fechaVencimiento(f) {
   return validas.sort()[validas.length - 1]; // la mas tardia
 }
 
+// Orden de compra, de servicio o contrato que el cliente asigna al trabajo. Va
+// escrita a mano dentro de las observaciones de la factura, en formas muy
+// distintas: "ORDEN DE COMPRA 2356", "O.C. 2179", "OC2191", "ORDEN DE SERVICIO
+// 88", "CONTRATO 123". Se extrae para tenerla como dato y no como parrafo.
+function ordenDelCliente(observaciones) {
+  const t = String(observaciones || '');
+  const patrones = [
+    // El \b inicial de las formas abreviadas es imprescindible: sin el,
+    // "PRODUCTOS 2356" termina en "OS" y se leeria como orden de servicio.
+    // Por eso la forma corta de OS exige ademas el punto ("O.S.").
+    [/ORDEN\s+DE\s+SERVICIO\s*\.?\s*(?:N[o\u00b0.]*\s*)?(\d{2,7})/i, 'OS'],
+    [/\bO\.\s?S\.?\s*\.?\s*(?:N[o\u00b0.]*\s*)?(\d{2,7})/i, 'OS'],
+    [/ORDEN\s+DE\s+COMPRA\s*\.?\s*(?:N[o\u00b0.]*\s*)?(\d{2,7})/i, 'OC'],
+    [/\bO\.?\s?C\.?\s*\.?\s*(?:N[o\u00b0.]*\s*)?(\d{2,7})/i, 'OC'],
+    [/\bCONTRATO\s*\.?\s*(?:N[o\u00b0.]*\s*)?(\d{2,7})/i, 'CONTRATO'],
+  ];
+  const encontradas = [];
+  for (const [rx, tipo] of patrones) {
+    const m = t.match(rx);
+    if (m) encontradas.push(`${tipo} ${m[1]}`);
+  }
+  // Se devuelven todas las que aparezcan: una factura puede citar la orden de
+  // compra y el contrato a la vez.
+  return encontradas.length ? [...new Set(encontradas)].join(' / ') : null;
+}
+
 const upsertSql = `
-  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, sincronizado_en)
-  VALUES (?,?,?,?,?,?,?,?,?,?, datetime('now'))
+  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, orden, sincronizado_en)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
   ON CONFLICT(siigo_invoice_id) DO UPDATE SET
     numero = excluded.numero, cliente = excluded.cliente, fecha = excluded.fecha, vencimiento = excluded.vencimiento,
     total = excluded.total, saldo = excluded.saldo, estado = excluded.estado,
-    anulada = excluded.anulada, observaciones = excluded.observaciones, sincronizado_en = datetime('now')
+    anulada = excluded.anulada, observaciones = excluded.observaciones,
+    orden = excluded.orden, sincronizado_en = datetime('now')
 `;
 
 module.exports = (router) => {
@@ -100,7 +127,7 @@ module.exports = (router) => {
         upsert.run(
           String(f.id), f.name || String(f.number || f.id), await nombreClienteFactura(f),
           (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,
-          f.observations || null
+          f.observations || null, ordenDelCliente(f.observations)
         );
         totalSincronizadas++;
       }
@@ -133,7 +160,13 @@ module.exports = (router) => {
   router.get('/api/facturas', withAuth(async ({ res, query }) => {
     const desde = query.desde || addDays(todayStr(), -365);
     const hasta = query.hasta || todayStr();
-    const rows = db.prepare('SELECT * FROM facturas WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC').all(desde, hasta);
+    // Se trae tambien el numero de la cotizacion vinculada, para mostrarlo en
+    // la tabla sin que el frontend tenga que cruzar nada.
+    const rows = db.prepare(
+      `SELECT f.*, c.numero AS cotizacion_numero FROM facturas f
+       LEFT JOIN cotizaciones c ON c.id = f.cotizacion_id
+       WHERE f.fecha BETWEEN ? AND ? ORDER BY f.fecha DESC`
+    ).all(desde, hasta);
     sendJson(res, 200, rows);
   }));
 

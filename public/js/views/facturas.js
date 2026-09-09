@@ -131,11 +131,13 @@ function paintTablaFacturas(listaFacturas) {
   };
   return `
     <div class="table-wrap"><table>
-      <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+      <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th>Orden / Contrato</th><th>Cotización</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
       <tbody>${listaFacturas.map((f) => `<tr>
         <td>${esc(f.numero || '')}</td>
         <td>${esc(f.cliente || '')}</td>
         <td>${fmtDMY(f.fecha)}</td>
+        <td>${f.orden ? esc(f.orden) : '<span class="tenue">—</span>'}</td>
+        <td>${f.cotizacion_numero ? esc(f.cotizacion_numero) : '<span class="tenue">—</span>'}</td>
         <td class="num">${money(f.total)}</td>
         <td class="num">${money(f.saldo)}</td>
         <td>${badge(f.estado)}</td>

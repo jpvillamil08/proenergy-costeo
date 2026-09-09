@@ -329,6 +329,12 @@ if (!columnaExiste('facturas', 'observaciones')) {
 // Cotizacion a la que pertenece la factura. Solo se llena cuando el numero
 // encontrado en las observaciones corresponde a una cotizacion que existe de
 // verdad: nunca se inventa el vinculo.
+// Orden de compra / de servicio / contrato del cliente, extraida del texto de
+// las observaciones. Se guarda aparte para poder mostrarla como columna y
+// buscarla, en vez de tener que leer el parrafo completo.
+if (!columnaExiste('facturas', 'orden')) {
+  db.exec(`ALTER TABLE facturas ADD COLUMN orden TEXT;`);
+}
 if (!columnaExiste('facturas', 'cotizacion_id')) {
   db.exec(`ALTER TABLE facturas ADD COLUMN cotizacion_id INTEGER REFERENCES cotizaciones(id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facturas_cotizacion ON facturas(cotizacion_id);`);
