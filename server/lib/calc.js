@@ -146,18 +146,18 @@ function evaluarSemaforo(costeoPresupuestado, politica, comparativo, sinCostosCa
   const objetivo = politica ? politica.pct_utilidad_objetivo : 0;
   const margenMin = politica ? politica.margen_minimo_aceptable : 0;
 
-  // Una cotizacion sin NINGUNA linea de materiales ni de mano de obra no es una
-  // cotizacion rentable: es una cotizacion a la que todavia no se le ha cargado
-  // el costo. Sin esta comprobacion, el costo daba casi 0, el margen daba ~100%
-  // y el semaforo la pintaba VIABLE en verde, que es justo la lectura contraria
-  // a la realidad (paso con 33 cotizaciones importadas de Siigo).
+  // Una cotizacion cuyo costo directo es cero no es una cotizacion rentable: es
+  // una cotizacion a la que todavia no se le ha cargado el costo. Sin esta
+  // comprobacion el margen daba ~100% y el semaforo la pintaba VIABLE en verde,
+  // que es justo la lectura contraria a la realidad (pasaba con las cotizaciones
+  // importadas de Siigo, cuyas lineas quedan marcadas [REVISAR] en $0).
   if (sinCostosCargados) {
     return {
       estado: 'SIN_DATOS',
-      mensaje: 'Esta cotización no tiene cargada ninguna línea de materiales ni de mano de obra, '
-        + 'así que su costo, su utilidad y su margen todavía no son reales. El margen del 100% que '
-        + 'arroja el cálculo solo refleja que no hay costos registrados, no que el trabajo sea rentable. '
-        + 'Cargue las líneas para poder evaluar la viabilidad.',
+      mensaje: 'Esta cotización no tiene costos reales cargados (no hay líneas de materiales ni de '
+        + 'mano de obra, o todas están en $0), así que su costo, su utilidad y su margen todavía no '
+        + 'son reales. El margen cercano al 100% solo refleja que no hay costos registrados, no que '
+        + 'el trabajo sea rentable. Complete los precios para poder evaluar la viabilidad.',
       ajuste: null,
     };
   }
@@ -389,9 +389,12 @@ function calcularCotizacion({ cot, manoObra, materiales, parametros, politica, p
 
   const rentabilidad = rentabilidadExtra(costeoPresupuestado, cot.precio_venta, politica);
   const comparativo = compararPresupuestadoReal(costeoPresupuestado, costeoReal);
-  // Sin lineas cargadas no hay costo real que evaluar: se distingue de una
-  // cotizacion que si tiene costos y da margen alto.
-  const sinCostosCargados = (!manoObra || manoObra.length === 0) && (!materiales || materiales.length === 0);
+  // Sin costo real que evaluar. Son dos situaciones que se ven igual en el
+  // resultado (margen ~100%) y ambas son "falta informacion", no rentabilidad:
+  //   - la cotizacion no tiene ninguna linea cargada, o
+  //   - tiene lineas pero todas en $0, que es como quedan las que se importan
+  //     de Siigo marcadas [REVISAR] hasta que alguien les pone precio.
+  const sinCostosCargados = costeoPresupuestado.subtotalCostoDirecto <= 0;
   const semaforo = evaluarSemaforo(costeoPresupuestado, politica, comparativo, sinCostosCargados);
   const cartera = evaluarCartera(cot, politica, pagos);
   const flujoCaja = evaluarFlujoCaja(cot, materiales, manoObra, pagos, cxp);
