@@ -82,6 +82,13 @@ rentabilidad, comparativo, semaforo, cartera, flujoCaja }`.
 - Cada bloque incluye un array **`desglose`** con `{ concepto, formula, valor }`:
   la app muestra la fórmula junto a cada cifra para que sea auditable. **Si
   agregas un cálculo, agrégale su línea de desglose.**
+- El semáforo tiene cuatro estados: `VIABLE`, `VIABLE_CON_AJUSTE`, `NO_VIABLE` y
+  **`SIN_DATOS`**. Este último se devuelve cuando el costo directo es cero (sin
+  líneas cargadas, o todas en `$0` como quedan las importadas de Siigo con
+  `[REVISAR]`). Existe porque sin él esas cotizaciones daban margen ~100% y
+  salían **VIABLE en verde**, que es la lectura contraria a la realidad. Al tocar
+  el semáforo, mantén los cuatro estados sincronizados en `public/js/format.js`
+  (`SEMAFORO_LABEL` / `SEMAFORO_CLASS`) y en `public/css/styles.css`.
 - `server/lib/cotizacion-service.js` es la única puerta de entrada a los datos de
   una cotización (`getCotizacionFull`, `listCotizacionesFull`). Dashboard,
   detalle, asistente y estimador lo reutilizan para que las cifras nunca se
@@ -102,6 +109,11 @@ SPA en **JavaScript vanilla con módulos ES**, servida tal cual (sin bundler).
   `js/guard.js` (`stillMounted` evita que un fetch tardío pise el DOM de otra
   vista), `js/charts.js` (gráficos SVG a mano), `js/asistente-widget.js` (chat).
 - Se construye HTML con template strings: **pasa siempre el texto por `esc()`**.
+- Los estáticos se sirven con `Cache-Control: no-store` (imágenes, un día). Es a
+  propósito: el frontend son módulos ES y el navegador los guarda en su registro
+  interno de módulos, del que no salen ni con recarga forzada, así que tras un
+  despliegue los usuarios seguían viendo el código anterior. No lo cambies a
+  `no-cache` sin resolver antes el versionado de los imports.
 
 ## Modelo de datos (SQLite)
 
