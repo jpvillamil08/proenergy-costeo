@@ -87,11 +87,15 @@ async function siigoFetch(pathAndQuery, opts = {}) {
   return data;
 }
 
-// Lista cotizaciones de Siigo. Parametros opcionales: createdStart, createdEnd (YYYY-MM-DD), page, pageSize.
-async function listarCotizaciones({ createdStart, createdEnd, page = 1, pageSize = 25 } = {}) {
+// Lista cotizaciones de Siigo. Parametros opcionales: createdStart, createdEnd,
+// updatedStart, updatedEnd (YYYY-MM-DD), page, pageSize. updated_* sirve para
+// encontrar las cotizaciones editadas en Siigo despues de importadas.
+async function listarCotizaciones({ createdStart, createdEnd, updatedStart, updatedEnd, page = 1, pageSize = 25 } = {}) {
   const qs = new URLSearchParams();
   if (createdStart) qs.set('created_start', createdStart);
   if (createdEnd) qs.set('created_end', createdEnd);
+  if (updatedStart) qs.set('updated_start', updatedStart);
+  if (updatedEnd) qs.set('updated_end', updatedEnd);
   qs.set('page', String(page));
   qs.set('page_size', String(pageSize));
   return siigoFetch(`/v1/quotations?${qs.toString()}`);
