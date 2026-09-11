@@ -149,14 +149,25 @@ Conceptos que hay que respetar:
   precio — Siigo no maneja costos internos), cruza los ítems contra el catálogo
   para cargar materiales, y sincroniza facturas de venta. Variables:
   `SIIGO_USERNAME`, `SIIGO_ACCESS_KEY`, `SIIGO_PARTNER_ID`.
-  - **La actividad es el título del documento en Siigo, que va en
-    Observaciones** (no en la primera línea de ítems: esa suele ser un material).
-    `server/lib/titulo.js` es la única regla (quita el número de orden del
-    comienzo). Las facturas ya guardan sus observaciones; las cotizaciones las
-    guardan en `cotizaciones.observaciones_siigo` (NULL = aún no consultada en
-    Siigo, '' = sin observaciones) y las viejas se completan en lotes con
-    `POST /api/siigo/cotizaciones/observaciones`. Las anteriores a agosto de 2026
-    no tienen título: quedan en blanco, nunca se deducen con palabras clave.
+  - **La actividad es el título del documento en Siigo** (nunca la primera
+    línea de ítems: esa suele ser un material). `server/lib/titulo.js` es la única
+    regla. En las facturas va en Observaciones. En las cotizaciones NO está en
+    Observaciones: el campo se ubica con `scripts/diagnostico-cotizacion-siigo.py`
+    y se configura en `CAMPOS_TITULO_COTIZACION`. La app guarda la cotización
+    cruda en `cotizaciones.siigo_json` y `cotizacion-service` calcula `cot.titulo`
+    desde ahí (y quita la cruda antes de mandarla al frontend), así que cambiar
+    la regla corrige todas sin volver a consultar Siigo. Las que no tienen título
+    quedan en blanco; nunca se deducen con palabras clave.
+  - **Cotizaciones editadas en Siigo** se ponen al día solas
+    (`revisarModificadas` / `actualizarDesdeSiigo` en `siigo-sync.js`): se compara
+    una huella (`cotizaciones.siigo_huella`) y, si cambió, se actualizan precio,
+    cliente, fecha y líneas. Cada línea de materiales sabe de qué ítem de Siigo
+    salió (`siigo_item`) y de dónde salió su costo (`costo_origen`: `catalogo`,
+    `regla_precio` o `manual`). **Un costo `manual` nunca lo toca la
+    sincronización**; uno por regla se recalcula si cambia el precio. Una línea
+    cuyo ítem desaparece de Siigo se borra, salvo que sea manual o tenga datos de
+    ejecución: esa queda marcada `[YA NO ESTÁ EN SIIGO]`. Al editar costos en la
+    app (PUT de materiales) el origen pasa a `manual`.
   - **`precio_venta` de lo importado de Siigo trae el IVA del 19%** (se guarda
     `q.total`), mientras los costos son sin IVA; por eso los márgenes de la app
     salen inflados. Decisión del usuario: no migrarlo; los informes muestran con
@@ -172,15 +183,18 @@ Conceptos que hay que respetar:
 
 ## Tareas automáticas
 
-`server/lib/scheduler.js` corre **una sincronización diaria con Siigo a las 7:00
-p.m. hora de Colombia**: importa las cotizaciones nuevas de los últimos 30 días y
-les carga los materiales. Se arranca desde `server/index.js` y no usa ninguna
-librería, solo `setTimeout` reprogramándose.
+`server/lib/scheduler.js` corre **la sincronización completa con Siigo a las 9:00
+a.m. y a las 5:00 p.m. hora de Colombia**: importa las cotizaciones nuevas de los
+últimos 30 días y les carga los materiales, pone al día las que alguien editó en
+Siigo, completa los títulos, costea con la regla del precio (−30%) las líneas en
+$0 y sincroniza las facturas del año pasado y del actual (`lib/facturas-sync.js`,
+compartido con `POST /api/facturas/sincronizar`). Se arranca desde
+`server/index.js` y no usa ninguna librería, solo `setTimeout` reprogramándose.
 
 - **La hora se calcula en UTC explícito**, nunca con `getHours()`: el contenedor
   de Railway corre en UTC, no en hora de Colombia. Colombia es UTC−5 todo el año
-  (sin horario de verano), así que las 7:00 p.m. de Bogotá son las 00:00 UTC del
-  día siguiente.
+  (sin horario de verano), así que las 9:00 a.m. y 5:00 p.m. de Bogotá son las
+  14:00 y las 22:00 UTC.
 - La lógica que ejecuta vive en `server/lib/siigo-sync.js`, **compartida con las
   rutas manuales** (`siigo.routes.js`, `siigo-materiales.routes.js`) para que el
   botón de la app y el cron apliquen exactamente las mismas reglas. Si tocas el
@@ -189,9 +203,11 @@ librería, solo `setTimeout` reprogramándose.
   al arrancar. Si el reinicio cae justo después de la hora, esa corrida se salta
   y se hace al día siguiente: no se pierde nada, porque siempre revisa una
   ventana de 30 días y solo trae lo que falte.
-- Para verlo o dispararlo sin esperar: `GET /api/siigo/sync/estado` y
-  `POST /api/siigo/sync/ejecutar` (ambas solo admin). Un flag `ejecutando` evita
-  que dos sincronizaciones se solapen.
+- Para verlo o dispararlo sin esperar: `GET /api/siigo/sync/estado` (incluye
+  `paso`, en qué va la corrida) y `POST /api/siigo/sync/ejecutar` (ambas solo
+  admin). `ejecutar` responde 202 de inmediato y sigue en segundo plano: la
+  corrida completa tarda minutos y Railway corta las peticiones largas. Un flag
+  `ejecutando` evita que dos sincronizaciones se solapen.
 - En auditoría queda como `SINCRONIZAR` con usuario `Sistema`, y solo cuando
   algo cambió realmente.
 

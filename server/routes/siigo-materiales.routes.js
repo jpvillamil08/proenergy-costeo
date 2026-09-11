@@ -8,7 +8,7 @@
 //
 // La logica del cruce contra el catalogo vive en lib/siigo-sync.js, compartida
 // con el programador automatico (lib/scheduler.js), para que el boton de la app
-// y la sincronizacion de las 7 p.m. apliquen exactamente las mismas reglas.
+// y la sincronizacion automatica apliquen exactamente las mismas reglas.
 //
 // Tres rutas, todas solo para Administrador:
 //   GET  /api/siigo/materiales/preview  -> solo mira y reporta, no escribe nada.
@@ -16,8 +16,9 @@
 //                                          llamada, controlado por ?limit=).
 //   POST /api/siigo/sync/ejecutar       -> dispara a mano la misma
 //                                          sincronizacion completa que corre
-//                                          sola cada dia a las 7 p.m.
-//   GET  /api/siigo/sync/estado         -> como va el programador diario.
+//                                          sola a las 9 a.m. y a las 5 p.m.
+//   GET  /api/siigo/sync/estado         -> como va el programador (y en que
+//                                          paso va la corrida en curso).
 const { sendJson } = require('../lib/http-helpers');
 const { withAdmin } = require('../lib/guard');
 const sync = require('../lib/siigo-sync');
@@ -82,11 +83,12 @@ module.exports = (router) => {
     }));
   }));
 
-  // Completa, en lotes, las observaciones de Siigo (titulo del trabajo) de las
-  // cotizaciones importadas antes de que se guardaran. ?limite=N (maximo 50).
+  // Completa, en lotes, la cotizacion cruda de Siigo (de ahi sale el titulo del
+  // trabajo) de las que aun no la tienen. ?limite=N (maximo 50). Conserva el
+  // nombre viejo de la ruta: la usa scripts/actualizar-cotizaciones-dia.py.
   router.post('/api/siigo/cotizaciones/observaciones', withAdmin(async ({ res, query }) => {
     const limite = Math.min(Math.max(Number(query.limite) || 25, 1), 50);
-    sendJson(res, 200, await sync.completarObservaciones({ limite }));
+    sendJson(res, 200, await sync.completarTitulos({ limite }));
   }));
 
   // Estado del programador diario: si esta vivo, cuando corre la proxima vez y
@@ -95,9 +97,16 @@ module.exports = (router) => {
     sendJson(res, 200, scheduler.estado);
   }));
 
-  // Dispara a mano la sincronizacion completa (lo mismo que corre a las 7 p.m.).
-  // Util para probarla sin esperar, o para ponerse al dia despues de un corte.
+  // Dispara a mano la sincronizacion completa (lo mismo que corre a las 9 a.m. y
+  // a las 5 p.m.). Responde de inmediato y sigue en segundo plano: la corrida
+  // completa (revisar todas las cotizaciones, facturas) tarda varios minutos y
+  // Railway corta las peticiones largas. El avance se ve en /api/siigo/sync/estado.
   router.post('/api/siigo/sync/ejecutar', withAdmin(async ({ res }) => {
-    sendJson(res, 200, await scheduler.ejecutarSincronizacion({ manual: true }));
+    if (scheduler.estado.ejecutando) {
+      sendJson(res, 200, { omitida: true, motivo: 'Ya hay una sincronizacion en curso.', paso: scheduler.estado.paso });
+      return;
+    }
+    scheduler.ejecutarSincronizacion({ manual: true }).catch(() => {});
+    sendJson(res, 202, { iniciada: true, mensaje: 'Sincronizacion iniciada. Consulte /api/siigo/sync/estado.' });
   }));
 };

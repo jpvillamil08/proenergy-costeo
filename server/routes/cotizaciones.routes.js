@@ -8,7 +8,6 @@ const estimador = require('../lib/estimador');
 const { vigenteEn: parametrosVigenteEn } = require('./parametros.routes');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const { todayStr, addDays } = require('../lib/dates');
-const { tituloDeObservaciones } = require('../lib/titulo');
 
 function resumen(full) {
   const { cot, calculo } = full;
@@ -16,7 +15,7 @@ function resumen(full) {
   const cart = calculo.cartera;
   return {
     id: cot.id, numero: cot.numero, cliente: cot.cliente, descripcion: cot.descripcion,
-    titulo: tituloDeObservaciones(cot.observaciones_siigo),
+    titulo: cot.titulo, // de cotizacion-service (titulo de Siigo)
     fecha_cotizacion: cot.fecha_cotizacion, fecha_aprobacion: cot.fecha_aprobacion,
     estado: cot.estado, condicion_pago: cot.condicion_pago, dias_credito_otorgados: cot.dias_credito_otorgados,
     precio_venta: cot.precio_venta,
@@ -190,8 +189,8 @@ module.exports = (router) => {
     }
     const info = db.prepare(
       `INSERT INTO cotizacion_materiales (cotizacion_id, descripcion, clasificacion, forma_pago, proveedor_id,
-        dias_credito_proveedor, fecha_compra, cantidad_presupuestada, cantidad_real, costo_unitario)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
+        dias_credito_proveedor, fecha_compra, cantidad_presupuestada, cantidad_real, costo_unitario, costo_origen)
+       VALUES (?,?,?,?,?,?,?,?,?,?,'manual')`
     ).run(
       params.id, b.descripcion, b.clasificacion || 'Directo', b.forma_pago || 'Contado', b.proveedor_id || null,
       diasCredito, b.fecha_compra || null, Number(b.cantidad_presupuestada) || 0, Number(b.cantidad_real) || 0, Number(b.costo_unitario) || 0
@@ -207,10 +206,14 @@ module.exports = (router) => {
     const b = await readJsonBody(req);
     db.prepare(
       `UPDATE cotizacion_materiales SET descripcion=?, clasificacion=?, forma_pago=?, proveedor_id=?, dias_credito_proveedor=?,
-       fecha_compra=?, cantidad_presupuestada=?, cantidad_real=?, costo_unitario=? WHERE id=?`
+       fecha_compra=?, cantidad_presupuestada=?, cantidad_real=?, costo_unitario=?,
+       -- Si alguien cambia el costo a mano, la sincronizacion con Siigo ya no lo toca.
+       costo_origen = CASE WHEN costo_unitario <> ? THEN 'manual' ELSE costo_origen END
+       WHERE id=?`
     ).run(
       b.descripcion, b.clasificacion, b.forma_pago, b.proveedor_id || null, Number(b.dias_credito_proveedor) || 0,
-      b.fecha_compra || null, Number(b.cantidad_presupuestada) || 0, Number(b.cantidad_real) || 0, Number(b.costo_unitario) || 0, params.lineId
+      b.fecha_compra || null, Number(b.cantidad_presupuestada) || 0, Number(b.cantidad_real) || 0, Number(b.costo_unitario) || 0,
+      Number(b.costo_unitario) || 0, params.lineId
     );
     const despues = db.prepare('SELECT * FROM cotizacion_materiales WHERE id = ?').get(params.lineId);
     registrarCambios({ usuario: user, entidad: 'cotizacion_materiales', entidadId: params.lineId, antes, despues });
@@ -240,8 +243,8 @@ module.exports = (router) => {
     }
     for (const mt of (datos.materiales || [])) {
       db.prepare(
-        `INSERT INTO cotizacion_materiales (cotizacion_id, descripcion, clasificacion, forma_pago, proveedor_id, dias_credito_proveedor, cantidad_presupuestada, cantidad_real, costo_unitario)
-         VALUES (?,?,?,?,?,?,?,0,?)`
+        `INSERT INTO cotizacion_materiales (cotizacion_id, descripcion, clasificacion, forma_pago, proveedor_id, dias_credito_proveedor, cantidad_presupuestada, cantidad_real, costo_unitario, costo_origen)
+         VALUES (?,?,?,?,?,?,?,0,?,'manual')`
       ).run(params.id, mt.descripcion, mt.clasificacion || 'Directo', mt.forma_pago || 'Contado', mt.proveedor_id || null, Number(mt.dias_credito_proveedor) || 0, Number(mt.cantidad_presupuestada) || 0, Number(mt.costo_unitario) || 0);
     }
     registrar({ usuario: user, accion: 'EDITAR', entidad: 'cotizaciones', entidadId: params.id, campo: 'plantilla_aplicada', valorNuevo: plantilla.nombre });

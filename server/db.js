@@ -351,6 +351,48 @@ if (!columnaExiste('facturas', 'titulo')) {
 if (!columnaExiste('cotizaciones', 'observaciones_siigo')) {
   db.exec(`ALTER TABLE cotizaciones ADD COLUMN observaciones_siigo TEXT;`);
 }
+// Cotizacion tal como la devolvio Siigo la ultima vez (JSON). Se guarda entera
+// para poder recalcular el titulo o la huella si cambia la regla, sin volver a
+// consultar Siigo. NULL = nunca se consulto desde que existe la columna.
+if (!columnaExiste('cotizaciones', 'siigo_json')) {
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN siigo_json TEXT;`);
+}
+// Huella (sha1) de lo que importa de la cotizacion en Siigo: total, cliente,
+// fecha, titulo e items. Si cambia, alguien la edito en Siigo y la app se pone
+// al dia (lib/siigo-sync.js, revisarModificadas). siigo_revisado_en: ultima
+// vez que se comparo.
+if (!columnaExiste('cotizaciones', 'siigo_huella')) {
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN siigo_huella TEXT;`);
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN siigo_revisado_en TEXT;`);
+}
+// De donde salio cada linea de materiales y su costo, para que la
+// sincronizacion con Siigo sepa que puede tocar:
+//   siigo_item          clave del item de Siigo que origino la linea
+//   precio_venta_siigo  precio unitario de ese item en Siigo
+//   costo_origen        'catalogo' (cruce con el catalogo), 'regla_precio'
+//                       (precio de Siigo - 30%) o 'manual' (lo escribio alguien).
+//                       Un costo manual NUNCA lo cambia la sincronizacion.
+if (!columnaExiste('cotizacion_materiales', 'costo_origen')) {
+  db.exec(`ALTER TABLE cotizacion_materiales ADD COLUMN siigo_item TEXT;`);
+  db.exec(`ALTER TABLE cotizacion_materiales ADD COLUMN precio_venta_siigo REAL;`);
+  db.exec(`ALTER TABLE cotizacion_materiales ADD COLUMN costo_origen TEXT;`);
+  // Lineas que ya existian. Manual: alguien les edito el costo en la app (queda
+  // en auditoria con su usuario) o las creo a mano. Del resto no se sabe si el
+  // costo vino del catalogo o de la regla; se deja NULL y la sincronizacion lo
+  // resuelve con el precio de Siigo (ver actualizarDesdeSiigo).
+  db.exec(`
+    UPDATE cotizacion_materiales SET costo_origen = 'manual'
+    WHERE id IN (
+      SELECT entidad_id FROM auditoria
+      WHERE entidad = 'cotizacion_materiales' AND usuario_id IS NOT NULL
+        AND ((accion = 'EDITAR' AND campo = 'costo_unitario') OR accion = 'CREAR')
+        -- la regla del 30% tambien deja un EDITAR de costo_unitario, pero con el
+        -- id de la COTIZACION, no de la linea: no es una edicion manual
+        AND COALESCE(valor_nuevo, '') NOT LIKE '%costeadas al%'
+    );`);
+  db.exec(`UPDATE cotizacion_materiales SET costo_origen = 'catalogo'
+    WHERE costo_origen IS NULL AND proveedor_id IS NOT NULL AND descripcion NOT LIKE '[REVISAR]%';`);
+}
 
 // Carga del catalogo inicial de materiales y precios (solo la primera vez que
 // esta version corre: si la tabla materiales ya tiene datos, no hace nada, para

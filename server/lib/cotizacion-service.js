@@ -1,5 +1,6 @@
 'use strict';
 const db = require('../db');
+const { tituloDeCotizacion, tituloDeObservaciones } = require('./titulo');
 const { calcularCotizacion } = require('./calc');
 const { addDays } = require('./dates');
 
@@ -53,9 +54,24 @@ function getPolitica(id) {
   return db.prepare('SELECT * FROM politicas_comerciales WHERE id = ?').get(id);
 }
 
+// Titulo (actividad) de la cotizacion segun Siigo, calculado desde la
+// cotizacion cruda guardada; y la cruda se quita, para no mandarle al navegador
+// ni al asistente varios KB de JSON por cotizacion. Si todavia no se ha
+// consultado, se usa lo que haya en observaciones_siigo.
+function prepararCot(cot) {
+  let titulo = null;
+  if (cot.siigo_json) {
+    try { titulo = tituloDeCotizacion(JSON.parse(cot.siigo_json)); } catch (e) { titulo = null; }
+  }
+  cot.titulo = titulo || tituloDeObservaciones(cot.observaciones_siigo);
+  delete cot.siigo_json;
+  return cot;
+}
+
 function getCotizacionFull(id) {
-  const cot = db.prepare('SELECT * FROM cotizaciones WHERE id = ?').get(id);
-  if (!cot) return null;
+  const raw = db.prepare('SELECT * FROM cotizaciones WHERE id = ?').get(id);
+  if (!raw) return null;
+  const cot = prepararCot(raw);
   const manoObra = getManoObra(id);
   const materiales = getMateriales(id);
   const pagos = getPagos(id);
@@ -67,7 +83,7 @@ function getCotizacionFull(id) {
 }
 
 function listCotizacionesFull() {
-  const cots = db.prepare('SELECT * FROM cotizaciones ORDER BY fecha_cotizacion DESC, id DESC').all();
+  const cots = db.prepare('SELECT * FROM cotizaciones ORDER BY fecha_cotizacion DESC, id DESC').all().map(prepararCot);
   return cots.map((cot) => {
     const manoObra = getManoObra(cot.id);
     const materiales = getMateriales(cot.id);

@@ -55,4 +55,22 @@ function tituloDeObservaciones(observaciones) {
   return t || null;
 }
 
-module.exports = { limpiar, decodificar, tituloDeObservaciones };
+// Campos de la cotizacion de Siigo donde puede venir el titulo, en orden de
+// preferencia. El 11/09/2026 se vio que en Observaciones no esta (C-1-235, 236 y
+// 237 salieron sin titulo aunque en Siigo si lo tienen): el campo real se ubica
+// con scripts/diagnostico-cotizacion-siigo.py y se agrega aqui. Como la app
+// guarda la cotizacion cruda (cotizaciones.siigo_json), cambiar esta lista
+// corrige todas las cotizaciones sin volver a consultar Siigo.
+const CAMPOS_TITULO_COTIZACION = ['observations'];
+
+function tituloDeCotizacion(q) {
+  if (!q || typeof q !== 'object') return null;
+  for (const campo of CAMPOS_TITULO_COTIZACION) {
+    const valor = campo.split('.').reduce((o, k) => (o == null ? o : o[k]), q);
+    const t = tituloDeObservaciones(valor);
+    if (t) return t;
+  }
+  return null;
+}
+
+module.exports = { limpiar, decodificar, tituloDeObservaciones, tituloDeCotizacion, CAMPOS_TITULO_COTIZACION };
