@@ -16,6 +16,7 @@ function resumen(full) {
   return {
     id: cot.id, numero: cot.numero, cliente: cot.cliente, descripcion: cot.descripcion,
     titulo: cot.titulo, // de cotizacion-service (titulo de Siigo)
+    origen: cot.origen, fecha_envio: cot.fecha_envio,
     fecha_cotizacion: cot.fecha_cotizacion, fecha_aprobacion: cot.fecha_aprobacion,
     estado: cot.estado, condicion_pago: cot.condicion_pago, dias_credito_otorgados: cot.dias_credito_otorgados,
     precio_venta: cot.precio_venta,

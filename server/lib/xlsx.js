@@ -243,4 +243,5 @@ function readXlsxFirstSheetAsObjects(buf) {
   });
 }
 
-module.exports = { writeXlsx, writeXlsxMultiSheet, readXlsxFirstSheetAsObjects, crc32 };
+// readZip tambien lo usa lib/correo-extraccion.js: un .docx es un ZIP.
+module.exports = { writeXlsx, writeXlsxMultiSheet, readXlsxFirstSheetAsObjects, crc32, readZip };

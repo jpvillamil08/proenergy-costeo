@@ -102,6 +102,7 @@ async function ejecutarSincronizacion({ manual = false } = {}) {
       const fr = await facturasSync.sincronizarFacturas({ desde: `${anio - 1}-01-01`, hasta: todayStr() });
       r.facturasSincronizadas = fr.totalSincronizadas;
       r.vinculoFacturas = fr.vinculo;
+      r.ordenesCompraFacturadas = require('./correo-sync').asociarOrdenesConFacturas();
     } catch (e) {
       r.errores.push({ paso: 'facturas', error: e.message });
     }
@@ -151,9 +152,64 @@ function programarSiguiente() {
   if (typeof t.unref === 'function') t.unref();
 }
 
+// ---------------------------------------------------------------- correo (cada hora)
+
+// Lectura del correo de Outlook (lib/correo-sync.js), cada hora en punto.
+// Independiente de la sincronizacion con Siigo: tiene su propio estado y su
+// propio flag, asi que las dos pueden coincidir sin pisarse.
+const estadoCorreo = {
+  activo: false, proximaEjecucion: null, ultimaEjecucion: null, ultimoResultado: null,
+  ultimoError: null, ejecutando: false, paso: null, corridas: 0,
+};
+
+async function ejecutarCorreo({ manual = false } = {}) {
+  const correo = require('./correo-sync');
+  if (estadoCorreo.ejecutando) return { omitida: true, motivo: 'Ya hay una lectura del correo en curso.' };
+  if (!correo.configurado()) {
+    estadoCorreo.ultimoError = 'La lectura del correo no esta configurada (faltan MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET y/o CORREO_BUZONES).';
+    return { omitida: true, motivo: estadoCorreo.ultimoError };
+  }
+  if (!require('./claude').configurada()) {
+    estadoCorreo.ultimoError = 'La IA no esta configurada (GEMINI_API_KEY o ANTHROPIC_API_KEY): sin ella no se pueden leer los documentos.';
+    return { omitida: true, motivo: estadoCorreo.ultimoError };
+  }
+  estadoCorreo.ejecutando = true;
+  const etiqueta = manual ? 'manual' : 'automatica';
+  try {
+    const r = await correo.revisarCorreo({ alAvanzar: (p) => { estadoCorreo.paso = p; } });
+    estadoCorreo.ultimaEjecucion = new Date().toISOString();
+    estadoCorreo.ultimoResultado = r;
+    estadoCorreo.ultimoError = null;
+    estadoCorreo.corridas++;
+    console.log(`[scheduler] Correo (${etiqueta}): ${r.leidos} leido(s), ${r.procesados} procesado(s), ${r.errores.length} error(es).`);
+    return r;
+  } catch (e) {
+    estadoCorreo.ultimoError = e.message;
+    estadoCorreo.ultimaEjecucion = new Date().toISOString();
+    console.error(`[scheduler] Fallo la lectura del correo (${etiqueta}):`, e.message);
+    return { error: e.message };
+  } finally {
+    estadoCorreo.ejecutando = false;
+    estadoCorreo.paso = null;
+  }
+}
+
+function programarCorreo() {
+  const ahora = new Date();
+  const siguiente = new Date(Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate(), ahora.getUTCHours() + 1, 0, 0, 0));
+  estadoCorreo.proximaEjecucion = siguiente.toISOString();
+  const t = setTimeout(async () => {
+    await ejecutarCorreo({ manual: false });
+    programarCorreo();
+  }, siguiente.getTime() - ahora.getTime());
+  if (typeof t.unref === 'function') t.unref();
+}
+
 function iniciar() {
   if (estado.activo) return estado;
   estado.activo = true;
+  estadoCorreo.activo = true;
+  programarCorreo();
   if (!siigo.configurada()) {
     console.log('[scheduler] Siigo no esta configurado: la sincronizacion queda programada pero no hara nada hasta que se definan las variables de entorno.');
   }
@@ -161,4 +217,7 @@ function iniciar() {
   return estado;
 }
 
-module.exports = { iniciar, ejecutarSincronizacion, estado, msHastaProximaHoraLocal, msHastaProximaDeVarias };
+module.exports = {
+  iniciar, ejecutarSincronizacion, estado, msHastaProximaHoraLocal, msHastaProximaDeVarias,
+  ejecutarCorreo, estadoCorreo,
+};

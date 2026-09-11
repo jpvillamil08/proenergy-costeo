@@ -47,13 +47,14 @@ function requerirProveedor() {
 const GEMINI_URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
 
-async function llamarGemini({ system, contents, herramientas }) {
+async function llamarGemini({ system, contents, herramientas = [], json = false }) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || GEMINI_DEFAULT_MODEL;
   const url = `${GEMINI_URL_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const body = {
     contents,
     ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
+    ...(json ? { generationConfig: { responseMimeType: 'application/json', temperature: 0 } } : {}),
     ...(herramientas.length
       ? {
           tools: [{
@@ -126,7 +127,7 @@ async function conversarGemini({ system, mensajes, herramientas }) {
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
 
-async function llamarClaude({ system, messages, tools }) {
+async function llamarClaude({ system, messages, tools, maxTokens = 1024 }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const model = process.env.ANTHROPIC_MODEL || CLAUDE_DEFAULT_MODEL;
   const res = await fetch(CLAUDE_API_URL, {
@@ -138,7 +139,7 @@ async function llamarClaude({ system, messages, tools }) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       system,
       messages,
       ...(tools && tools.length ? { tools } : {}),
@@ -208,4 +209,38 @@ async function conversar({ system, mensajes, herramientas = [] }) {
   return conversarClaude({ system, mensajes, herramientas });
 }
 
-module.exports = { conversar, configurada, proveedorActivo };
+// ==================== Extraccion de datos de documentos ====================
+
+// Lee un texto (y PDFs adjuntos) y devuelve el JSON que pide `system`. Lo usa
+// la lectura del correo (lib/correo-extraccion.js). Los PDF van como documento:
+// los dos proveedores los leen de forma nativa, sin librerias en el servidor.
+// `pdfs` = [{ nombre, base64 }].
+function parsearJSON(texto) {
+  const limpio = String(texto || '').replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+  const ini = limpio.indexOf('{');
+  const fin = limpio.lastIndexOf('}');
+  if (ini < 0 || fin < ini) throw new Error('La IA no devolvio un JSON');
+  return JSON.parse(limpio.slice(ini, fin + 1));
+}
+
+async function extraerJSON({ system, texto, pdfs = [] }) {
+  const proveedor = requerirProveedor();
+  if (proveedor === 'gemini') {
+    const parts = [
+      ...pdfs.map((p) => ({ inline_data: { mime_type: 'application/pdf', data: p.base64 } })),
+      { text: texto },
+    ];
+    const data = await llamarGemini({ system, contents: [{ role: 'user', parts }], json: true });
+    const cand = (data.candidates || [])[0];
+    const salida = ((cand && cand.content && cand.content.parts) || []).map((p) => p.text || '').join('');
+    return parsearJSON(salida);
+  }
+  const content = [
+    ...pdfs.map((p) => ({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: p.base64 }, title: p.nombre })),
+    { type: 'text', text: texto },
+  ];
+  const data = await llamarClaude({ system, messages: [{ role: 'user', content }], maxTokens: 4000 });
+  return parsearJSON((data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join(''));
+}
+
+module.exports = { conversar, configurada, proveedorActivo, extraerJSON };

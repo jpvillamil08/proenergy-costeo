@@ -18,6 +18,7 @@ import { renderAuditoria } from './views/auditoria.js';
 import { renderImportExport } from './views/import-export.js';
 import { renderEstadisticas } from './views/estadisticas.js';
 import { renderFacturas } from './views/facturas.js';
+import { renderBuzon } from './views/buzon.js';
 
 const appEl = document.getElementById('app');
 export const state = { usuario: null };
@@ -26,6 +27,7 @@ const NAV_ADMIN = [
   ['#/dashboard', 'Dashboard'],
   ['#/cotizaciones', 'Cotizaciones'],
   ['#/facturas', 'Facturas'],
+  ['#/buzon', 'Buzón'],
   ['#/estadisticas', 'Estadísticas'],
   ['#/presupuesto', 'Presupuesto'],
   ['#/admin/parametros', 'Parámetros'],
@@ -41,6 +43,7 @@ const NAV_GERENCIA = [
   ['#/dashboard', 'Dashboard'],
   ['#/cotizaciones', 'Cotizaciones'],
   ['#/facturas', 'Facturas'],
+  ['#/buzon', 'Buzón'],
   ['#/estadisticas', 'Estadísticas'],
   ['#/presupuesto', 'Presupuesto'],
   ['#/auditoria', 'Auditoría'],
@@ -94,6 +97,7 @@ async function router() {
     else if (hash === '#/cotizaciones/nueva') await (isAdmin ? renderCotizacionNueva(content, state) : (content.innerHTML = '<div class="error-box">Solo el Administrador puede crear cotizaciones.</div>'));
     else if (hash === '#/estadisticas') await renderEstadisticas(content, state);
     else if (hash === '#/facturas') await renderFacturas(content, state);
+    else if (hash === '#/buzon') await renderBuzon(content, state);
     else if (m) await renderCotizacionDetail(content, state, m[1]);
     else if (hash === '#/admin/parametros') await adminOnly(renderParametros)(content, state);
     else if (hash === '#/admin/politicas') await adminOnly(renderPoliticas)(content, state);

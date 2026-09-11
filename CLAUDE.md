@@ -172,6 +172,20 @@ Conceptos que hay que respetar:
     `q.total`), mientras los costos son sin IVA; por eso los márgenes de la app
     salen inflados. Decisión del usuario: no migrarlo; los informes muestran con
     y sin IVA (sin IVA = con IVA ÷ 1,19) y el margen sobre sin IVA.
+- **Correo de Outlook** (`server/lib/outlook.js` + `correo-extraccion.js` +
+  `correo-sync.js`, rutas en `buzon.routes.js`, vista `buzon.js`): cada hora lee
+  por Microsoft Graph (permiso de aplicación `Mail.Read`, solo lectura) los
+  buzones de `CORREO_BUZONES`, recibidos y enviados. Un filtro previo sin IA deja
+  pasar solo correos de negocio; la IA (`claude.extraerJSON`, que manda los PDF
+  como documento) los clasifica y extrae datos con la regla de no inventar
+  cifras. Según el tipo: cotización de Siigo enviada → pasa a Enviada;
+  cotización propia (Word/PDF, fuera de Siigo) → se crea con `origen='correo'`;
+  orden de compra → `ordenes_compra`, la cotización pasa a Aprobada y se asocia
+  a la factura por el número de OC de `facturas.orden`; solicitud, licitación o
+  cotización de proveedor → `buzon_ofertas` (Pendiente → Cotizada → Cumplida).
+  Todo queda en `correo_mensajes` con el enlace al correo. Variables:
+  `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `CORREO_BUZONES`; guía para
+  el administrador en `docs/conectar-outlook.md`.
 - **Asistente de chat** (`server/lib/claude.js` + `asistente-tools.js` +
   `asistente.routes.js`): loop propio de *tool use* con dos proveedores
   intercambiables — Gemini (`GEMINI_API_KEY`, por defecto) o Anthropic
@@ -211,7 +225,10 @@ compartido con `POST /api/facturas/sincronizar`). Se arranca desde
 - En auditoría queda como `SINCRONIZAR` con usuario `Sistema`, y solo cuando
   algo cambió realmente.
 
-Variables de entorno en uso: `PORT`, `RAILWAY_VOLUME_MOUNT_PATH`, `SIIGO_*`,
+Además, un segundo temporizador lee el correo de Outlook **cada hora en punto**
+(`estadoCorreo` en `scheduler.js`, `GET /api/correo/estado`, `POST /api/correo/ejecutar`).
+
+Variables de entorno en uso: `PORT`, `RAILWAY_VOLUME_MOUNT_PATH`, `SIIGO_*`, `MS_*`, `CORREO_BUZONES`,
 `GEMINI_API_KEY`/`GEMINI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`,
 `IA_PROVEEDOR`, `FORCE_SEED`, `RESET_ADMIN_PASSWORD`, y
 `ADMIN_USERNAME`/`ADMIN_PASSWORD` (solo para los scripts de diagnóstico).

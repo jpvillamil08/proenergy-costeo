@@ -170,7 +170,7 @@ export async function renderCotizacionesList(content, state) {
             <thead><tr><th>Número</th><th>Cliente</th><th>Actividad</th><th>Fecha</th><th>Estado</th><th class="num">Precio</th><th class="num">Utilidad</th><th class="num">Margen</th><th>Semáforo</th><th>Estado pago</th></tr></thead>
             <tbody>${filtradas.map((r) => `
               <tr class="clickable" data-id="${r.id}">
-                <td>${esc(r.numero)}</td><td>${esc(r.cliente)}</td>
+                <td>${esc(r.numero)}${r.origen === 'correo' ? ' <span class="pill" title="Registrada desde el correo (no pasó por Siigo)">Correo</span>' : ''}</td><td>${esc(r.cliente)}</td>
                 <td>${r.titulo ? esc(r.titulo) : '<span class="tenue">—</span>'}</td><td>${fmtDMY(r.fecha_cotizacion)}</td>
                 <td><span class="badge estado-${r.estado}">${r.estado}</span></td>
                 <td class="num">${money(r.precio_venta)}</td><td class="num">${money(r.utilidad)}</td><td class="num">${pct(r.margenPct)}</td>

@@ -195,6 +195,90 @@ CREATE TABLE IF NOT EXISTS facturas (
 );
 CREATE INDEX IF NOT EXISTS idx_facturas_fecha ON facturas(fecha);
 
+-- ---------------------------------------------------------------- correo (Outlook)
+-- Lectura automatica de los buzones de Outlook (lib/correo-sync.js). Hasta
+-- donde se leyo cada carpeta de cada buzon: la siguiente corrida sigue desde ahi.
+CREATE TABLE IF NOT EXISTS correo_estado (
+  buzon TEXT NOT NULL,
+  carpeta TEXT NOT NULL,
+  leido_hasta TEXT NOT NULL,
+  PRIMARY KEY (buzon, carpeta)
+);
+
+-- Cada correo que paso el filtro previo, con lo que la IA extrajo de el. El id
+-- de Graph es UNIQUE: un correo nunca se procesa dos veces.
+CREATE TABLE IF NOT EXISTS correo_mensajes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  graph_id TEXT UNIQUE NOT NULL,
+  buzon TEXT NOT NULL,
+  carpeta TEXT NOT NULL,
+  fecha TEXT,
+  remitente TEXT,
+  destinatarios TEXT,
+  asunto TEXT,
+  adjuntos TEXT,
+  tipo TEXT,
+  extraido_json TEXT,
+  accion TEXT,
+  estado TEXT NOT NULL DEFAULT 'pendiente',
+  error TEXT,
+  web_link TEXT,
+  conversacion TEXT,
+  intentos INTEGER NOT NULL DEFAULT 1,
+  procesado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_correo_fecha ON correo_mensajes(fecha);
+
+-- Buzon de ofertas: solicitudes de clientes, invitaciones a licitar y
+-- cotizaciones de proveedores. "Cumplida" = atendida (decision del usuario).
+CREATE TABLE IF NOT EXISTS buzon_ofertas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mensaje_id INTEGER REFERENCES correo_mensajes(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('Solicitud','Licitación','Proveedor')),
+  remitente TEXT,
+  empresa TEXT,
+  asunto TEXT,
+  resumen TEXT,
+  valor REAL,
+  fecha_recibido TEXT,
+  fecha_limite TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('Pendiente','Cotizada','Cumplida','Descartada')) DEFAULT 'Pendiente',
+  cotizacion_id INTEGER REFERENCES cotizaciones(id),
+  atendido_por INTEGER REFERENCES usuarios(id),
+  atendido_en TEXT,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Items de las cotizaciones de proveedores (precios de referencia). No entran
+-- solos al catalogo de materiales: los revisa una persona.
+CREATE TABLE IF NOT EXISTS buzon_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  buzon_id INTEGER NOT NULL REFERENCES buzon_ofertas(id) ON DELETE CASCADE,
+  descripcion TEXT NOT NULL,
+  cantidad REAL,
+  unidad TEXT,
+  precio_unitario REAL
+);
+
+-- Ordenes de compra de clientes recibidas por correo, asociadas a su cotizacion
+-- y, cuando se factura, a la factura (por el numero de OC que Siigo trae en
+-- las observaciones, facturas.orden).
+CREATE TABLE IF NOT EXISTS ordenes_compra (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mensaje_id INTEGER REFERENCES correo_mensajes(id),
+  numero TEXT NOT NULL,
+  cliente TEXT,
+  fecha TEXT,
+  valor REAL,
+  descripcion TEXT,
+  cotizacion_id INTEGER REFERENCES cotizaciones(id),
+  factura_id INTEGER REFERENCES facturas(id),
+  adjunto TEXT,
+  referencias TEXT, -- cotizaciones que nombra la OC (JSON): se reintenta el cruce en cada corrida
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_oc_numero ON ordenes_compra(numero);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   usuario_id INTEGER REFERENCES usuarios(id),
@@ -354,6 +438,16 @@ if (!columnaExiste('cotizaciones', 'observaciones_siigo')) {
 // Cotizacion tal como la devolvio Siigo la ultima vez (JSON). Se guarda entera
 // para poder recalcular el titulo o la huella si cambia la regla, sin volver a
 // consultar Siigo. NULL = nunca se consulto desde que existe la columna.
+// De donde vino la cotizacion ('siigo', 'correo' o NULL = creada en la app),
+// el correo que la registro o con el que se envio, y la fecha real de envio.
+// Las cotizaciones hechas en Word (con actas y alcance tecnico) no pasan por
+// Siigo: se registran desde el correo (lib/correo-sync.js).
+if (!columnaExiste('cotizaciones', 'origen')) {
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN origen TEXT;`);
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN correo_mensaje_id INTEGER;`);
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN fecha_envio TEXT;`);
+  db.exec(`UPDATE cotizaciones SET origen = 'siigo' WHERE siigo_quotation_id IS NOT NULL;`);
+}
 if (!columnaExiste('cotizaciones', 'siigo_json')) {
   db.exec(`ALTER TABLE cotizaciones ADD COLUMN siigo_json TEXT;`);
 }

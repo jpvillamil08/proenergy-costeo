@@ -56,6 +56,9 @@ module.exports = (router) => {
     // facturas sincronizadas antes de existir la columna lo muestren sin
     // esperar a la siguiente sincronizacion.
     for (const r of rows) r.titulo = tituloDeObservaciones(r.observaciones);
+    // Si la orden de compra de la factura llego por correo (lib/correo-sync.js).
+    const ocs = new Set(db.prepare('SELECT numero FROM ordenes_compra').all().map((o) => o.numero));
+    for (const r of rows) r.oc_recibida = Boolean(r.orden && (String(r.orden).match(/\d{2,10}/g) || []).some((x) => ocs.has(x.replace(/^0+/, '') || '0')));
     sendJson(res, 200, rows);
   }));
 

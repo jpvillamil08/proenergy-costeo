@@ -137,7 +137,7 @@ function paintTablaFacturas(listaFacturas) {
         <td>${esc(f.cliente || '')}</td>
         <td>${f.titulo ? esc(f.titulo) : '<span class="tenue">—</span>'}</td>
         <td>${fmtDMY(f.fecha)}</td>
-        <td>${f.orden ? esc(f.orden) : '<span class="tenue">—</span>'}</td>
+        <td>${f.orden ? esc(f.orden) : '<span class="tenue">—</span>'}${f.oc_recibida ? ' <span class="pill" title="La orden de compra llegó por correo (ver Buzón)">OC recibida</span>' : ''}</td>
         <td>${f.cotizacion_numero ? esc(f.cotizacion_numero) : '<span class="tenue">—</span>'}</td>
         <td class="num">${money(f.total)}</td>
         <td class="num">${money(f.saldo)}</td>

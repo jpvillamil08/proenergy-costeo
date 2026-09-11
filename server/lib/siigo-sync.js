@@ -767,6 +767,8 @@ module.exports = {
   sincronizar, sincronizarCotizaciones, nombreClientePorId, costosDesdePrecioDeVenta,
   completarTitulos, completarObservaciones: completarTitulos,
   revisarModificadas, actualizarDesdeSiigo, guardarBaseSiigo,
+  // los usa tambien lib/correo-sync.js (cotizaciones registradas desde el correo)
+  insertLinea, insertarLineaDeItem, costoPorRegla,
   // para pruebas
   itemsDeSiigo, huellaCotizacion, emparejar, normalizarDescripcion,
 };
