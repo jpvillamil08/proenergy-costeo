@@ -7,6 +7,7 @@ const siigo = require('../lib/siigo');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const vinculo = require('../lib/facturas-vinculo');
 const sync = require('../lib/siigo-sync');
+const { tituloDeItems } = require('../lib/titulo');
 
 // Nombre de cliente de una factura de Siigo.
 //
@@ -71,13 +72,13 @@ function ordenDelCliente(observaciones) {
 }
 
 const upsertSql = `
-  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, orden, sincronizado_en)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, orden, titulo, sincronizado_en)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
   ON CONFLICT(siigo_invoice_id) DO UPDATE SET
     numero = excluded.numero, cliente = excluded.cliente, fecha = excluded.fecha, vencimiento = excluded.vencimiento,
     total = excluded.total, saldo = excluded.saldo, estado = excluded.estado,
     anulada = excluded.anulada, observaciones = excluded.observaciones,
-    orden = excluded.orden, sincronizado_en = datetime('now')
+    orden = excluded.orden, titulo = excluded.titulo, sincronizado_en = datetime('now')
 `;
 
 module.exports = (router) => {
@@ -127,7 +128,7 @@ module.exports = (router) => {
         upsert.run(
           String(f.id), f.name || String(f.number || f.id), await nombreClienteFactura(f),
           (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,
-          f.observations || null, ordenDelCliente(f.observations)
+          f.observations || null, ordenDelCliente(f.observations), tituloDeItems(f.items)
         );
         totalSincronizadas++;
       }

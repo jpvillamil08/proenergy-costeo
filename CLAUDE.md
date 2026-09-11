@@ -149,6 +149,16 @@ Conceptos que hay que respetar:
   precio — Siigo no maneja costos internos), cruza los ítems contra el catálogo
   para cargar materiales, y sincroniza facturas de venta. Variables:
   `SIIGO_USERNAME`, `SIIGO_ACCESS_KEY`, `SIIGO_PARTNER_ID`.
+  - **La actividad es el título del documento en Siigo**: la primera línea
+    (primer ítem) de la cotización o factura, donde PROENERGY escribe el trabajo
+    ("CLIENTE - ACTIVIDAD"). `server/lib/titulo.js` es la única regla: las
+    cotizaciones lo exponen como `titulo` en `/api/cotizaciones` (sale de su
+    `descripcion`) y las facturas lo guardan en `facturas.titulo` al sincronizar.
+    No se deduce con palabras clave: el usuario lo pidió así.
+  - **`precio_venta` de lo importado de Siigo trae el IVA del 19%** (se guarda
+    `q.total`), mientras los costos son sin IVA; por eso los márgenes de la app
+    salen inflados. Decisión del usuario: no migrarlo; los informes muestran con
+    y sin IVA (sin IVA = con IVA ÷ 1,19) y el margen sobre sin IVA.
 - **Asistente de chat** (`server/lib/claude.js` + `asistente-tools.js` +
   `asistente.routes.js`): loop propio de *tool use* con dos proveedores
   intercambiables — Gemini (`GEMINI_API_KEY`, por defecto) o Anthropic

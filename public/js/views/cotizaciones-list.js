@@ -145,7 +145,7 @@ export async function renderCotizacionesList(content, state) {
   function paint() {
     const filtradas = rows.filter((r) => {
       if (estadoF && r.estado !== estadoF) return false;
-      if (filtro && !(`${r.numero} ${r.cliente}`.toLowerCase().includes(filtro.toLowerCase()))) return false;
+      if (filtro && !(`${r.numero} ${r.cliente} ${r.titulo || ''}`.toLowerCase().includes(filtro.toLowerCase()))) return false;
       return true;
     });
     content.innerHTML = `
@@ -160,22 +160,23 @@ export async function renderCotizacionesList(content, state) {
       ${isAdmin && siigoEstado && siigoEstado.tipo === 'listo' ? panelMaterialesSiigo() : ''}
       <div class="card">
         <div class="filters" style="margin-bottom:14px;">
-          <div class="field"><label>Buscar</label><input id="f-buscar" placeholder="Número o cliente" value="${esc(filtro)}"></div>
+          <div class="field"><label>Buscar</label><input id="f-buscar" placeholder="Número, cliente o actividad" value="${esc(filtro)}"></div>
           <div class="field"><label>Estado</label>
             <select id="f-estado"><option value="">Todos</option>${['Borrador', 'Enviada', 'Aprobada', 'Rechazada', 'Ejecutada', 'Cerrada'].map((e) => `<option ${estadoF === e ? 'selected' : ''}>${e}</option>`).join('')}</select>
           </div>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Número</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th class="num">Precio</th><th class="num">Utilidad</th><th class="num">Margen</th><th>Semáforo</th><th>Estado pago</th></tr></thead>
+            <thead><tr><th>Número</th><th>Cliente</th><th>Actividad</th><th>Fecha</th><th>Estado</th><th class="num">Precio</th><th class="num">Utilidad</th><th class="num">Margen</th><th>Semáforo</th><th>Estado pago</th></tr></thead>
             <tbody>${filtradas.map((r) => `
               <tr class="clickable" data-id="${r.id}">
-                <td>${esc(r.numero)}</td><td>${esc(r.cliente)}</td><td>${fmtDMY(r.fecha_cotizacion)}</td>
+                <td>${esc(r.numero)}</td><td>${esc(r.cliente)}</td>
+                <td>${r.titulo ? esc(r.titulo) : '<span class="tenue">—</span>'}</td><td>${fmtDMY(r.fecha_cotizacion)}</td>
                 <td><span class="badge estado-${r.estado}">${r.estado}</span></td>
                 <td class="num">${money(r.precio_venta)}</td><td class="num">${money(r.utilidad)}</td><td class="num">${pct(r.margenPct)}</td>
                 <td><span class="sem ${SEMAFORO_CLASS[r.semaforo]}">${SEMAFORO_LABEL[r.semaforo]}</span></td>
                 <td><span class="pago-badge pago-${r.estadoPago.replace(' ', '.')}">${esc(r.estadoPago)}</span></td>
-              </tr>`).join('') || '<tr><td colspan="9" class="empty-state">Sin resultados.</td></tr>'}
+              </tr>`).join('') || '<tr><td colspan="10" class="empty-state">Sin resultados.</td></tr>'}
             </tbody>
           </table>
         </div>

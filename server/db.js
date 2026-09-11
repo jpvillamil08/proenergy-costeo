@@ -339,6 +339,12 @@ if (!columnaExiste('facturas', 'cotizacion_id')) {
   db.exec(`ALTER TABLE facturas ADD COLUMN cotizacion_id INTEGER REFERENCES cotizaciones(id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facturas_cotizacion ON facturas(cotizacion_id);`);
 }
+// Titulo de la factura: la primera linea de sus items en Siigo, que es donde se
+// escribe el trabajo facturado (ver lib/titulo.js). Las facturas ya guardadas
+// quedan en NULL hasta la siguiente sincronizacion, que lo llena solo.
+if (!columnaExiste('facturas', 'titulo')) {
+  db.exec(`ALTER TABLE facturas ADD COLUMN titulo TEXT;`);
+}
 
 // Carga del catalogo inicial de materiales y precios (solo la primera vez que
 // esta version corre: si la tabla materiales ya tiene datos, no hace nada, para
