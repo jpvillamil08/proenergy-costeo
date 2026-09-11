@@ -306,12 +306,12 @@ async function importarCotizacion(siigoId, { usuario, parametrosVigenteEn, polit
   const info = db.prepare(
     `INSERT INTO cotizaciones (numero, cliente, descripcion, fecha_cotizacion, condicion_pago,
       dias_credito_otorgados, precio_venta, pct_anticipo, estado, parametros_id, politica_id,
-      creado_por, actualizado_por, siigo_quotation_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      creado_por, actualizado_por, siigo_quotation_id, observaciones_siigo)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(
     numeroFinal, clienteNombre, descripcion || `Importada desde Siigo (cotización ${numero})`, fecha,
     'Contado', 0, Number(q.total) || 0, 0, 'Borrador', param.id, politica.id,
-    usuario ? usuario.id : null, usuario ? usuario.id : null, siigoId
+    usuario ? usuario.id : null, usuario ? usuario.id : null, siigoId, q.observations || ''
   );
   registrar({
     usuario, accion: 'CREAR', entidad: 'cotizaciones', entidadId: info.lastInsertRowid,
@@ -355,6 +355,38 @@ async function importarNuevas({ dias = 30, usuario = null, parametrosVigenteEn, 
   return { importadas, errores, desde: createdStart, hasta: createdEnd };
 }
 
+// ---------------------------------------------------------------- observaciones
+
+// Trae de Siigo las observaciones (el titulo del trabajo) de las cotizaciones
+// que se importaron antes de guardarlas. Un lote por llamada, para no pasarse
+// del tiempo maximo de una peticion en Railway; se llama hasta que no queden.
+async function completarObservaciones({ limite = 25 } = {}) {
+  const pendientes = db.prepare(
+    `SELECT id, numero, siigo_quotation_id FROM cotizaciones
+     WHERE siigo_quotation_id IS NOT NULL AND observaciones_siigo IS NULL
+     ORDER BY id LIMIT ?`
+  ).all(limite);
+  const guardar = db.prepare('UPDATE cotizaciones SET observaciones_siigo = ? WHERE id = ?');
+  let conTexto = 0;
+  const errores = [];
+  for (const c of pendientes) {
+    try {
+      const q = await siigo.obtenerCotizacion(c.siigo_quotation_id);
+      const obs = (q && q.observations) || '';
+      guardar.run(obs, c.id);   // '' marca "consultada y sin observaciones"
+      if (obs.trim()) conTexto++;
+    } catch (e) {
+      errores.push({ numero: c.numero, error: e.message });
+    }
+    await pausa(PAUSA_ENTRE_LLAMADAS_MS);
+  }
+  const quedan = db.prepare(
+    `SELECT COUNT(*) AS n FROM cotizaciones
+     WHERE siigo_quotation_id IS NOT NULL AND observaciones_siigo IS NULL`
+  ).get().n;
+  return { procesadas: pendientes.length, conTexto, pendientes: quedan, errores };
+}
+
 // ---------------------------------------------------------------- orquestador
 
 // Lo que corre el programador diario: primero trae las cotizaciones nuevas y
@@ -396,5 +428,5 @@ async function sincronizar({ dias = 30, usuario = null, parametrosVigenteEn, pol
 module.exports = {
   cotizacionesPendientes, totalPendientes, catalogoTokenizado, mejorMatch,
   analizarCotizacion, cargarMateriales, importarCotizacion, importarNuevas,
-  sincronizar, nombreClientePorId, costosDesdePrecioDeVenta,
+  sincronizar, nombreClientePorId, costosDesdePrecioDeVenta, completarObservaciones,
 };

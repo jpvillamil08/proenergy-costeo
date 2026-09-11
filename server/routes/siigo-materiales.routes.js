@@ -82,6 +82,13 @@ module.exports = (router) => {
     }));
   }));
 
+  // Completa, en lotes, las observaciones de Siigo (titulo del trabajo) de las
+  // cotizaciones importadas antes de que se guardaran. ?limite=N (maximo 50).
+  router.post('/api/siigo/cotizaciones/observaciones', withAdmin(async ({ res, query }) => {
+    const limite = Math.min(Math.max(Number(query.limite) || 25, 1), 50);
+    sendJson(res, 200, await sync.completarObservaciones({ limite }));
+  }));
+
   // Estado del programador diario: si esta vivo, cuando corre la proxima vez y
   // como fue la ultima corrida.
   router.get('/api/siigo/sync/estado', withAdmin(async ({ res }) => {

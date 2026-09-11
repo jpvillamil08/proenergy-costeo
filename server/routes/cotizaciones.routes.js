@@ -8,7 +8,7 @@ const estimador = require('../lib/estimador');
 const { vigenteEn: parametrosVigenteEn } = require('./parametros.routes');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const { todayStr, addDays } = require('../lib/dates');
-const { tituloDeDescripcion } = require('../lib/titulo');
+const { tituloDeObservaciones } = require('../lib/titulo');
 
 function resumen(full) {
   const { cot, calculo } = full;
@@ -16,7 +16,7 @@ function resumen(full) {
   const cart = calculo.cartera;
   return {
     id: cot.id, numero: cot.numero, cliente: cot.cliente, descripcion: cot.descripcion,
-    titulo: tituloDeDescripcion(cot.descripcion),
+    titulo: tituloDeObservaciones(cot.observaciones_siigo),
     fecha_cotizacion: cot.fecha_cotizacion, fecha_aprobacion: cot.fecha_aprobacion,
     estado: cot.estado, condicion_pago: cot.condicion_pago, dias_credito_otorgados: cot.dias_credito_otorgados,
     precio_venta: cot.precio_venta,

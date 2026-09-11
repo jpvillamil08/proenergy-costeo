@@ -149,12 +149,14 @@ Conceptos que hay que respetar:
   precio — Siigo no maneja costos internos), cruza los ítems contra el catálogo
   para cargar materiales, y sincroniza facturas de venta. Variables:
   `SIIGO_USERNAME`, `SIIGO_ACCESS_KEY`, `SIIGO_PARTNER_ID`.
-  - **La actividad es el título del documento en Siigo**: la primera línea
-    (primer ítem) de la cotización o factura, donde PROENERGY escribe el trabajo
-    ("CLIENTE - ACTIVIDAD"). `server/lib/titulo.js` es la única regla: las
-    cotizaciones lo exponen como `titulo` en `/api/cotizaciones` (sale de su
-    `descripcion`) y las facturas lo guardan en `facturas.titulo` al sincronizar.
-    No se deduce con palabras clave: el usuario lo pidió así.
+  - **La actividad es el título del documento en Siigo, que va en
+    Observaciones** (no en la primera línea de ítems: esa suele ser un material).
+    `server/lib/titulo.js` es la única regla (quita el número de orden del
+    comienzo). Las facturas ya guardan sus observaciones; las cotizaciones las
+    guardan en `cotizaciones.observaciones_siigo` (NULL = aún no consultada en
+    Siigo, '' = sin observaciones) y las viejas se completan en lotes con
+    `POST /api/siigo/cotizaciones/observaciones`. Las anteriores a agosto de 2026
+    no tienen título: quedan en blanco, nunca se deducen con palabras clave.
   - **`precio_venta` de lo importado de Siigo trae el IVA del 19%** (se guarda
     `q.total`), mientras los costos son sin IVA; por eso los márgenes de la app
     salen inflados. Decisión del usuario: no migrarlo; los informes muestran con

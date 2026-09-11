@@ -339,11 +339,17 @@ if (!columnaExiste('facturas', 'cotizacion_id')) {
   db.exec(`ALTER TABLE facturas ADD COLUMN cotizacion_id INTEGER REFERENCES cotizaciones(id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_facturas_cotizacion ON facturas(cotizacion_id);`);
 }
-// Titulo de la factura: la primera linea de sus items en Siigo, que es donde se
-// escribe el trabajo facturado (ver lib/titulo.js). Las facturas ya guardadas
-// quedan en NULL hasta la siguiente sincronizacion, que lo llena solo.
+// Titulo (actividad) de la factura: lo escrito en sus observaciones de Siigo,
+// sin el numero de orden (ver lib/titulo.js).
 if (!columnaExiste('facturas', 'titulo')) {
   db.exec(`ALTER TABLE facturas ADD COLUMN titulo TEXT;`);
+}
+// Observaciones de la cotizacion en Siigo: ahi PROENERGY escribe el titulo del
+// trabajo. NULL = todavia no se consulto en Siigo; '' = se consulto y no tiene.
+// Las importadas antes de existir la columna se completan con
+// POST /api/siigo/cotizaciones/observaciones.
+if (!columnaExiste('cotizaciones', 'observaciones_siigo')) {
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN observaciones_siigo TEXT;`);
 }
 
 // Carga del catalogo inicial de materiales y precios (solo la primera vez que

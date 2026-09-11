@@ -7,7 +7,7 @@ const siigo = require('../lib/siigo');
 const { vigenteEn: politicaVigenteEn } = require('./politicas.routes');
 const vinculo = require('../lib/facturas-vinculo');
 const sync = require('../lib/siigo-sync');
-const { tituloDeItems } = require('../lib/titulo');
+const { tituloDeObservaciones } = require('../lib/titulo');
 
 // Nombre de cliente de una factura de Siigo.
 //
@@ -128,7 +128,7 @@ module.exports = (router) => {
         upsert.run(
           String(f.id), f.name || String(f.number || f.id), await nombreClienteFactura(f),
           (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,
-          f.observations || null, ordenDelCliente(f.observations), tituloDeItems(f.items)
+          f.observations || null, ordenDelCliente(f.observations), tituloDeObservaciones(f.observations)
         );
         totalSincronizadas++;
       }
@@ -168,6 +168,10 @@ module.exports = (router) => {
        LEFT JOIN cotizaciones c ON c.id = f.cotizacion_id
        WHERE f.fecha BETWEEN ? AND ? ORDER BY f.fecha DESC`
     ).all(desde, hasta);
+    // El titulo se calcula desde las observaciones ya guardadas, para que las
+    // facturas sincronizadas antes de existir la columna lo muestren sin
+    // esperar a la siguiente sincronizacion.
+    for (const r of rows) r.titulo = tituloDeObservaciones(r.observaciones);
     sendJson(res, 200, rows);
   }));
 
