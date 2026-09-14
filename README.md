@@ -71,6 +71,16 @@ Si el puerto 3000 está ocupado, puede cambiarlo: `PORT=4000 npm start`.
 - **Vista de impresión / PDF** en dos versiones: comercial (solo precio, para
   el cliente) e interna (costeo y utilidad completos, para uso interno). Use
   el botón "Imprimir / Guardar como PDF" del navegador sobre esa vista.
+- **CRM comercial** (menú **CRM**), para ver todo sobre cada cliente en un solo lugar:
+  - **Tablero:** pipeline abierto y pronóstico ponderado sin IVA, ganados y perdidos, tasa de cierre, ciclo de venta, facturado del mes contra la meta del presupuesto, días por etapa, top de clientes, alertas y agenda de la semana.
+  - **Negocios** en tablero Kanban o en lista, con las etapas de HubSpot: Previsita → Propuesta enviada → Propuesta aceptada → OC recibida → Actividad ejecutada → Enviar factura → Cierre ganado / perdido. Se cambian de etapa arrastrando la tarjeta.
+  - **Avance automático:** cada cotización de 2026 en adelante y cada solicitud del buzón crea su negocio, que avanza solo con la aprobación, la orden de compra y la factura. La sincronización nunca devuelve lo que alguien movió a mano.
+  - **Conciliación:** cuando una factura no dice de qué cotización sale, el CRM propone la factura del mismo cliente por el mismo valor, y usted la confirma.
+  - **Empresas** con **ficha 360**: contactos, negocios, línea de tiempo, cotizaciones, facturas, cartera, órdenes de compra y correos de Outlook enlazados.
+  - **Contactos** y **agenda** (llamadas, visitas, reuniones, tareas y notas), con recordatorios dentro de la app. El botón **📅 Outlook** descarga la actividad para su calendario.
+  - **Alertas con su evidencia:** la campana de la barra muestra las tareas vencidas y las de hoy; el tablero lista además propuestas sin respuesta y clientes a reactivar.
+  - **Importar/exportar Excel**, **posibles duplicados** con fusión, y el **asistente de chat**, que responde sobre clientes y embudo.
+  - Gerencia consulta; solo el Administrador modifica. La plataforma no envía correos.
 - **Diseño responsive**, en español, con formato de pesos colombianos
   (`$ 1.234.567`, sin decimales), porcentajes con un decimal y fechas
   día/mes/año.

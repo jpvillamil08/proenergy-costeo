@@ -195,6 +195,49 @@ Conceptos que hay que respetar:
   forma confusa; los endpoints `/api/*/estado` le dicen al frontend si está
   configurado.
 
+## CRM comercial
+
+**Archivos:** lógica en `server/lib/crm.js`, rutas en `server/routes/crm.routes.js` (`/api/crm/*`), pantallas `public/js/views/crm-*.js` (con piezas comunes en `crm-comun.js`) y modal reutilizable en `public/js/modal.js`.
+
+**Tablas:** `crm_empresas` (+ `crm_empresa_alias`), `crm_contactos`, `crm_negocios`, `crm_etapas_historial` y `crm_actividades`. Además, `empresa_id` en cotizaciones, facturas, OC, buzón y correos; `negocio_id` y `nit` en cotizaciones, y `nit` en facturas.
+
+**Etapas:** las de HubSpot, con su probabilidad por defecto (`ETAPAS`). La probabilidad se puede fijar en cada negocio.
+
+**`sincronizarCrm()`** es idempotente. Corre al arrancar, al final de la sincronización de Siigo y tras cada lectura del correo. Hace lo siguiente:
+- **Empresas:** crea o encuentra la empresa de cada documento (`empresaPara`), solo por **NIT exacto o `nombre_norm` idéntico**. `normalizarEmpresa` quita tildes, puntuación y la forma societaria ("RUITOQUE S.A. E.S.P." = "RUITOQUE").
+  - Los parecidos nunca se unen solos: salen en `duplicados()` y los fusiona una persona con `fusionar`.
+  - Al fusionar, el nombre y el NIT viejos quedan como alias; así la sincronización no vuelve a crear la empresa.
+- **Negocios:** crea uno por cada cotización desde `INICIO_NEGOCIOS_AUTO` (2026-01-01) y uno por cada solicitud o licitación del buzón.
+  - Un negocio automático no tiene fecha de cierre esperada: queda vacía y aparece como alerta.
+- **Avance, siempre hacia adelante y con la fecha real de la señal:**
+  - Borrador o Enviada → Propuesta enviada; Aprobada → Propuesta aceptada.
+  - OC → OC recibida; Ejecutada o Cerrada → Actividad ejecutada.
+  - Factura (directa o por la OC) → Cierre ganado.
+  - Todas las cotizaciones rechazadas → Cierre perdido.
+  - No toca negocios cerrados ni devuelve lo movido a mano. "Enviar factura" es manual.
+- **Tipo de empresa:** Cliente si tiene facturas de los últimos 12 meses, Inactivo si solo tiene más viejas, Prospecto si no tiene. `tipo_manual` lo respeta.
+- **Correos:** enlaza `correo_mensajes` con contactos (correo exacto) o empresas (`dominio_correo`, que se completa desde los contactos). Excluye dominios genéricos y `proenergyco.com`.
+
+**Conciliación cotización ↔ factura** (`posiblesFacturas` / `vincularFacturas`, `/api/crm/conciliacion`):
+- La mayoría de las facturas no traen el número de cotización en sus observaciones, así que sus negocios quedaban abiertos e inflaban el pipeline.
+- Se **proponen** facturas del mismo cliente, sin vincular, emitidas en los 180 días siguientes a la cotización y por el mismo valor (±0,5% o $1.000). `unica` y `exacta` marcan las seguras.
+- **Nunca se vinculan solas:** las confirma una persona. Al vincular se escribe `facturas.cotizacion_id` con auditoría.
+
+**Valores:**
+- `valoresCotizacion` asume `precio_venta` con IVA para lo de Siigo y el correo, y sin IVA para lo creado en la app.
+- El embudo y el pronóstico van **sin IVA**. El valor de un negocio es la suma de sus cotizaciones no rechazadas; `valor_estimado` solo aplica si no tiene cotizaciones.
+- El facturado del mes contra la meta usa `total ÷ 1,19` y la línea "Ingresos Operacionales" (fila 18) del presupuesto, igual que el informe semanal.
+
+**Alertas** (`alertas()`):
+- Cada alerta trae su evidencia.
+- La campana cuenta solo lo crítico y lo de hoy.
+- Las propuestas quietas de una misma empresa (3 o más) se resumen en una sola alerta.
+
+**Otros:**
+- Las fechas y horas de actividades van en hora de Colombia (`ahoraColombia()`, UTC−5) como `'YYYY-MM-DDTHH:MM'`.
+- `GET /api/crm/actividades/:id/ics` descarga un evento para Outlook. **La plataforma no envía correos ni invitaciones.**
+- El asistente tiene cuatro herramientas de solo lectura (`buscar_empresas_crm`, `ficha_empresa_crm`, `embudo_crm`, `alertas_crm`).
+
 ## Tareas automáticas
 
 `server/lib/scheduler.js` corre **la sincronización completa con Siigo a las 9:00

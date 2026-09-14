@@ -279,6 +279,128 @@ CREATE TABLE IF NOT EXISTS ordenes_compra (
 );
 CREATE INDEX IF NOT EXISTS idx_oc_numero ON ordenes_compra(numero);
 
+-- ---------------------------------------------------------------- CRM
+-- Clientes y prospectos (lib/crm.js). Se crean solos a partir de cotizaciones,
+-- facturas, ordenes de compra, buzon y ventas historicas, y a mano. Nunca se
+-- fusionan por parecido: solo por NIT exacto o nombre normalizado identico
+-- (nombre_norm); los parecidos los decide una persona (fusionar).
+CREATE TABLE IF NOT EXISTS crm_empresas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  nombre_norm TEXT NOT NULL,
+  nit TEXT,
+  tipo TEXT NOT NULL CHECK (tipo IN ('Prospecto','Cliente','Inactivo')) DEFAULT 'Prospecto',
+  tipo_manual INTEGER NOT NULL DEFAULT 0, -- 1 = alguien fijo el tipo: la sincronizacion no lo recalcula
+  sector TEXT,
+  ciudad TEXT,
+  direccion TEXT,
+  telefono TEXT,
+  web TEXT,
+  dominio_correo TEXT, -- para enlazar correos de Outlook que no vienen de un contacto conocido
+  origen TEXT,
+  responsable_id INTEGER REFERENCES usuarios(id),
+  notas TEXT,
+  activo INTEGER NOT NULL DEFAULT 1,
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_crm_emp_norm ON crm_empresas(nombre_norm);
+CREATE INDEX IF NOT EXISTS idx_crm_emp_nit ON crm_empresas(nit);
+
+-- Nombres y NIT de empresas fusionadas ('nombre:<norm>' / 'nit:<nit>'): sin
+-- esto, la siguiente sincronizacion volveria a crear la empresa que se fusiono.
+CREATE TABLE IF NOT EXISTS crm_empresa_alias (
+  clave TEXT PRIMARY KEY,
+  empresa_id INTEGER NOT NULL REFERENCES crm_empresas(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS crm_contactos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id INTEGER NOT NULL REFERENCES crm_empresas(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL,
+  cargo TEXT,
+  rol TEXT, -- Decisor, Técnico, Compras, Financiero, Otro
+  email TEXT,
+  telefono TEXT,
+  celular TEXT,
+  es_principal INTEGER NOT NULL DEFAULT 0,
+  notas TEXT,
+  activo INTEGER NOT NULL DEFAULT 1,
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_crm_cont_empresa ON crm_contactos(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_crm_cont_email ON crm_contactos(email);
+
+-- Negocios (oportunidades) con las etapas del embudo de HubSpot. auto = 1: lo
+-- creo la sincronizacion desde una cotizacion o una solicitud del buzon.
+-- El valor de un negocio con cotizaciones sale de ellas (cotizaciones.negocio_id);
+-- valor_estimado (sin IVA) solo se usa mientras no tenga ninguna.
+CREATE TABLE IF NOT EXISTS crm_negocios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  empresa_id INTEGER NOT NULL REFERENCES crm_empresas(id),
+  contacto_id INTEGER REFERENCES crm_contactos(id) ON DELETE SET NULL,
+  nombre TEXT NOT NULL,
+  etapa TEXT NOT NULL DEFAULT 'Previsita',
+  etapa_desde TEXT,
+  fecha_inicio TEXT NOT NULL,
+  valor_estimado REAL,
+  probabilidad REAL, -- NULL = la de la etapa (lib/crm.js ETAPAS)
+  fecha_cierre_esperada TEXT,
+  fecha_cierre_real TEXT,
+  motivo_perdida TEXT,
+  origen TEXT,
+  responsable_id INTEGER REFERENCES usuarios(id),
+  buzon_oferta_id INTEGER REFERENCES buzon_ofertas(id),
+  descripcion TEXT,
+  auto INTEGER NOT NULL DEFAULT 0,
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_crm_neg_empresa ON crm_negocios(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_crm_neg_etapa ON crm_negocios(etapa);
+
+-- Cada cambio de etapa, con la fecha real de la senal cuando es automatico
+-- (fecha de la factura, de la OC...): de aqui salen el ciclo de venta y los
+-- dias promedio por etapa.
+CREATE TABLE IF NOT EXISTS crm_etapas_historial (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  negocio_id INTEGER NOT NULL REFERENCES crm_negocios(id) ON DELETE CASCADE,
+  etapa_anterior TEXT,
+  etapa_nueva TEXT NOT NULL,
+  fecha TEXT NOT NULL,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  automatico INTEGER NOT NULL DEFAULT 0,
+  detalle TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_crm_hist_negocio ON crm_etapas_historial(negocio_id);
+
+-- Llamadas, visitas, reuniones, tareas y notas. fecha_programada en hora de
+-- Colombia, 'YYYY-MM-DDTHH:MM'. La plataforma no envia recordatorios por
+-- correo: las alertas se ven dentro de la app.
+CREATE TABLE IF NOT EXISTS crm_actividades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL CHECK (tipo IN ('Llamada','Visita','Reunión','Correo','WhatsApp','Tarea','Nota')),
+  asunto TEXT NOT NULL,
+  descripcion TEXT,
+  empresa_id INTEGER REFERENCES crm_empresas(id) ON DELETE CASCADE,
+  contacto_id INTEGER REFERENCES crm_contactos(id) ON DELETE SET NULL,
+  negocio_id INTEGER REFERENCES crm_negocios(id) ON DELETE SET NULL,
+  fecha_programada TEXT,
+  duracion_min INTEGER NOT NULL DEFAULT 30,
+  completada INTEGER NOT NULL DEFAULT 0,
+  completada_en TEXT,
+  resultado TEXT,
+  responsable_id INTEGER REFERENCES usuarios(id),
+  creado_por INTEGER REFERENCES usuarios(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_crm_act_fecha ON crm_actividades(fecha_programada);
+CREATE INDEX IF NOT EXISTS idx_crm_act_empresa ON crm_actividades(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_crm_act_negocio ON crm_actividades(negocio_id);
+
 CREATE TABLE IF NOT EXISTS auditoria (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   usuario_id INTEGER REFERENCES usuarios(id),
@@ -486,6 +608,30 @@ if (!columnaExiste('cotizacion_materiales', 'costo_origen')) {
     );`);
   db.exec(`UPDATE cotizacion_materiales SET costo_origen = 'catalogo'
     WHERE costo_origen IS NULL AND proveedor_id IS NOT NULL AND descripcion NOT LIKE '[REVISAR]%';`);
+}
+
+// CRM (lib/crm.js): cada documento sabe a que empresa pertenece, y cada
+// cotizacion a que negocio. El NIT se guarda para cruzar empresas por
+// identificacion y no solo por nombre (en las cotizaciones sale de la
+// cotizacion cruda de Siigo; en las facturas lo llena facturas-sync).
+for (const tabla of ['cotizaciones', 'facturas', 'ordenes_compra', 'buzon_ofertas', 'correo_mensajes']) {
+  if (!columnaExiste(tabla, 'empresa_id')) {
+    db.exec(`ALTER TABLE ${tabla} ADD COLUMN empresa_id INTEGER REFERENCES crm_empresas(id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${tabla}_empresa ON ${tabla}(empresa_id);`);
+  }
+}
+if (!columnaExiste('correo_mensajes', 'contacto_id')) {
+  db.exec(`ALTER TABLE correo_mensajes ADD COLUMN contacto_id INTEGER REFERENCES crm_contactos(id);`);
+}
+if (!columnaExiste('cotizaciones', 'negocio_id')) {
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN negocio_id INTEGER REFERENCES crm_negocios(id);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_cotizaciones_negocio ON cotizaciones(negocio_id);`);
+}
+if (!columnaExiste('cotizaciones', 'nit')) {
+  db.exec(`ALTER TABLE cotizaciones ADD COLUMN nit TEXT;`);
+}
+if (!columnaExiste('facturas', 'nit')) {
+  db.exec(`ALTER TABLE facturas ADD COLUMN nit TEXT;`);
 }
 
 // Carga del catalogo inicial de materiales y precios (solo la primera vez que

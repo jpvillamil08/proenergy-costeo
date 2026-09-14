@@ -56,6 +56,8 @@ function paint(content) {
       <div style="flex:1; min-width:260px; font-size:13.5px; color:var(--ink-2)">${esc(sem.mensaje)}</div>
     </div>
 
+    <div class="card crm-en-cotizacion" id="crm-negocio-card"><span class="muted small">Buscando el negocio en el CRM…</span></div>
+
     <div class="card" id="header-card"></div>
 
     <div class="tabs" id="tabs">
@@ -85,6 +87,7 @@ function paint(content) {
   content.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => { tab = b.dataset.tab; paint(content); }));
 
   paintHeaderCard(content);
+  paintNegocioCrm(content);
   const body = document.getElementById('tab-body');
   if (tab === 'costeo') paintCosteo(body);
   else if (tab === 'rapida') paintSeleccionRapida(body, content);
@@ -96,6 +99,37 @@ function paint(content) {
 }
 
 function tabBtn(id, label) { return `<button data-tab="${id}" class="${tab === id ? 'active' : ''}">${label}</button>`; }
+
+// ---------------- Negocio del CRM ----------------
+// La cotizacion en el embudo comercial: a que negocio y empresa pertenece y en
+// que etapa va (lib/crm.js lo crea y lo avanza solo).
+async function paintNegocioCrm(content) {
+  const el = document.getElementById('crm-negocio-card');
+  if (!el) return;
+  const cot = full.cot;
+  let negocios = [];
+  try { negocios = await api.get(`/api/crm/negocios?cotizacion_id=${cot.id}`); } catch (e) { el.remove(); return; }
+  if (!stillMounted(el)) return;
+  const n = negocios[0];
+  if (n) {
+    el.innerHTML = `<div class="btn-row" style="justify-content:space-between">
+      <div><span class="muted small">Negocio en el CRM</span><div><a href="#/crm/negocios/${n.id}"><strong>${esc(n.nombre)}</strong></a>
+        · <a href="#/crm/empresas/${n.empresa_id}">${esc(n.empresa_nombre)}</a></div></div>
+      <div><span class="badge-etapa" style="--c:${n.etapa === 'Cierre ganado' ? '#0ca30c' : n.etapa === 'Cierre perdido' ? '#d03b3b' : '#2a78d6'}">${esc(n.etapa)}</span>
+        ${n.fecha_cierre_esperada ? `<span class="pill">Cierre esperado ${fmtDMY(n.fecha_cierre_esperada)}</span>` : ''}</div></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="btn-row" style="justify-content:space-between"><span class="muted small">Esta cotización no está en ningún negocio del CRM${cot.fecha_cotizacion < '2026-01-01' ? ' (las anteriores a 2026 solo aparecen en el historial de la empresa)' : ''}.</span>
+    ${isAdmin ? `<button class="btn btn-secondary btn-sm" id="b-crm-negocio">Crear negocio</button>` : ''}</div>`;
+  const b = document.getElementById('b-crm-negocio');
+  if (b) b.addEventListener('click', async () => {
+    const { formNegocio } = await import('./crm-comun.js');
+    const empresas = await api.get('/api/crm/empresas?min=1');
+    const emp = empresas.find((e) => e.nombre === cot.cliente);
+    const r = await formNegocio({ empresaId: cot.empresa_id || (emp && emp.id), cotizacionNumero: cot.numero });
+    if (r) paintNegocioCrm(content);
+  });
+}
 
 // ---------------- Encabezado ----------------
 function paintHeaderCard(content) {

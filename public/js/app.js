@@ -19,12 +19,20 @@ import { renderImportExport } from './views/import-export.js';
 import { renderEstadisticas } from './views/estadisticas.js';
 import { renderFacturas } from './views/facturas.js';
 import { renderBuzon } from './views/buzon.js';
+import { renderCrmTablero } from './views/crm-tablero.js';
+import { renderCrmNegocios } from './views/crm-negocios.js';
+import { renderCrmNegocio } from './views/crm-negocio.js';
+import { renderCrmEmpresas } from './views/crm-empresas.js';
+import { renderCrmEmpresa } from './views/crm-empresa.js';
+import { renderCrmContactos } from './views/crm-contactos.js';
+import { renderCrmAgenda } from './views/crm-agenda.js';
 
 const appEl = document.getElementById('app');
 export const state = { usuario: null };
 
 const NAV_ADMIN = [
   ['#/dashboard', 'Dashboard'],
+  ['#/crm', 'CRM'],
   ['#/cotizaciones', 'Cotizaciones'],
   ['#/facturas', 'Facturas'],
   ['#/buzon', 'Buzón'],
@@ -41,6 +49,7 @@ const NAV_ADMIN = [
 ];
 const NAV_GERENCIA = [
   ['#/dashboard', 'Dashboard'],
+  ['#/crm', 'CRM'],
   ['#/cotizaciones', 'Cotizaciones'],
   ['#/facturas', 'Facturas'],
   ['#/buzon', 'Buzón'],
@@ -57,6 +66,7 @@ function layoutShell() {
       <div class="brand"><img src="/img/logo.png" alt="PROENERGY" class="brand-logo"><span>PROENERGY</span></div>
       <nav>${nav.map(([href, label]) => `<a href="${href}" class="${hash.startsWith(href) ? 'active' : ''}">${label}</a>`).join('')}</nav>
       <div class="user">
+        <a href="#/crm" class="campana" id="crm-campana" title="Alertas del CRM" hidden><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg><span class="campana-n"></span></a>
         <span>${esc(state.usuario.nombre)}</span>
         <span class="rol-badge">${state.usuario.rol === 'admin' ? 'Administrador' : 'Gerencia'}</span>
         <button id="btn-logout">Salir</button>
@@ -72,11 +82,30 @@ function layoutShell() {
     boot();
   });
   montarAsistente();
+  actualizarCampana();
   return document.getElementById('content');
+}
+
+// Numero de alertas del CRM (tareas vencidas, negocios con cierre pasado...) en la barra.
+async function actualizarCampana() {
+  const el = document.getElementById('crm-campana');
+  if (!el) return;
+  try {
+    const r = await api.get('/api/crm/alertas?resumen=1');
+    if (!document.body.contains(el)) return;
+    el.hidden = false;
+    el.querySelector('.campana-n').textContent = r.total ? String(r.total) : '';
+    el.classList.toggle('critica', r.criticas > 0);
+    el.title = r.total ? `${r.total} alerta(s) del CRM, ${r.criticas} crítica(s)` : 'CRM al día';
+  } catch (e) { /* sin CRM disponible: la campana queda oculta */ }
 }
 
 async function router() {
   let hash = location.hash || '#/dashboard';
+  // Parametros despues de "?" (por ejemplo #/crm/negocios?etapa=Previsita).
+  const [rutaHash, qsHash] = hash.split('?');
+  const hashQuery = Object.fromEntries(new URLSearchParams(qsHash || ''));
+  hash = rutaHash;
   if (!state.usuario) {
     if (hash !== '#/login') { location.hash = '#/login'; return; }
     renderLogin(appEl, async (usuario) => { state.usuario = usuario; location.hash = '#/dashboard'; router(); });
@@ -98,6 +127,13 @@ async function router() {
     else if (hash === '#/estadisticas') await renderEstadisticas(content, state);
     else if (hash === '#/facturas') await renderFacturas(content, state);
     else if (hash === '#/buzon') await renderBuzon(content, state);
+    else if (hash === '#/crm') await renderCrmTablero(content, state);
+    else if (hash === '#/crm/negocios') await renderCrmNegocios(content, state, hashQuery);
+    else if (/^#\/crm\/negocios\/\d+$/.test(hash)) await renderCrmNegocio(content, state, hash.split('/').pop());
+    else if (hash === '#/crm/empresas') await renderCrmEmpresas(content, state);
+    else if (/^#\/crm\/empresas\/\d+$/.test(hash)) await renderCrmEmpresa(content, state, hash.split('/').pop());
+    else if (hash === '#/crm/contactos') await renderCrmContactos(content, state);
+    else if (hash === '#/crm/agenda') await renderCrmAgenda(content, state);
     else if (m) await renderCotizacionDetail(content, state, m[1]);
     else if (hash === '#/admin/parametros') await adminOnly(renderParametros)(content, state);
     else if (hash === '#/admin/politicas') await adminOnly(renderPoliticas)(content, state);

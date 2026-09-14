@@ -256,6 +256,121 @@ const HERRAMIENTAS = [
     },
     ejecutar: async (input) => consultarPresupuesto(input),
   },
+  {
+    schema: {
+      name: 'buscar_empresas_crm',
+      description: 'Busca empresas (clientes y prospectos) en el CRM por nombre, NIT o ciudad, o filtra por tipo (Cliente, Prospecto, Inactivo). Devuelve facturado de los ultimos 12 meses, cartera, negocios abiertos, ultima factura y ultimo contacto. Usala para preguntas sobre clientes.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          texto: { type: 'string', description: 'Parte del nombre, NIT o ciudad.' },
+          tipo: { type: 'string', enum: ['Cliente', 'Prospecto', 'Inactivo'] },
+        },
+      },
+    },
+    ejecutar: async (input) => buscarEmpresasCrm(input),
+  },
+  {
+    schema: {
+      name: 'ficha_empresa_crm',
+      description: 'Ficha 360 de una empresa del CRM: datos, contactos, negocios con su etapa y valor, ultimas actividades (llamadas, visitas, notas), cotizaciones, facturas, cartera y ordenes de compra. Usala antes de sugerir la siguiente accion con un cliente.',
+      input_schema: {
+        type: 'object',
+        properties: { empresa: { type: 'string', description: 'Nombre (o parte) o NIT de la empresa.' } },
+        required: ['empresa'],
+      },
+    },
+    ejecutar: async (input) => fichaEmpresaCrm(input),
+  },
+  {
+    schema: {
+      name: 'embudo_crm',
+      description: 'Estado del embudo comercial: negocios abiertos por etapa con su valor sin IVA, pronostico ponderado, ganados y perdidos del periodo, tasa de cierre, ciclo de venta, motivos de perdida, facturado del mes contra la meta del presupuesto y los negocios abiertos mas grandes.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          desde: { type: 'string', description: 'Fecha inicial YYYY-MM-DD del periodo (por defecto, 1 de enero del año actual).' },
+          hasta: { type: 'string', description: 'Fecha final YYYY-MM-DD (por defecto, hoy).' },
+        },
+      },
+    },
+    ejecutar: async (input) => embudoCrm(input),
+  },
+  {
+    schema: {
+      name: 'alertas_crm',
+      description: 'Alertas comerciales con la evidencia de cada una: tareas vencidas y de hoy, negocios con fecha de cierre pasada, propuestas sin respuesta, negocios sin actividad, solicitudes del buzon pendientes, OC sin factura y clientes a reactivar (facturaban y llevan mas de 180 dias sin factura). Usala para "que debo hacer hoy", "a quien llamo" o "que clientes reactivar".',
+      input_schema: { type: 'object', properties: {} },
+    },
+    ejecutar: async () => alertasCrm(),
+  },
 ];
 
-module.exports = { HERRAMIENTAS, resumenGeneral, buscarCotizaciones, detalleCotizacion, cuentasPorPagarPendientes, buscarMaterialCatalogo, consultarPresupuesto };
+// ---------------------------------------------------------------- CRM
+// Se pide lib/crm aqui dentro para no cargarlo antes que la base de datos.
+function crmLib() {
+  return require('./crm');
+}
+
+function buscarEmpresasCrm({ texto, tipo } = {}) {
+  const lista = crmLib().listarEmpresas({ texto, tipo }).slice(0, 25);
+  return lista.map((e) => ({
+    id: e.id, nombre: e.nombre, nit: e.nit, tipo: e.tipo, sector: e.sector, ciudad: e.ciudad,
+    facturado_12m: redondear(e.facturado_12m), cartera: redondear(e.cartera), negocios_abiertos: e.negocios_abiertos,
+    ultima_factura: e.ultima_factura, ultimo_contacto: e.ultimo_contacto, dias_sin_contacto: e.dias_sin_contacto,
+  }));
+}
+
+function fichaEmpresaCrm({ empresa } = {}) {
+  const crm = crmLib();
+  const candidatas = crm.listarEmpresas({ texto: empresa });
+  if (!candidatas.length) return { error: `No se encontró ninguna empresa con "${empresa}".` };
+  if (candidatas.length > 1 && !candidatas.some((c) => c.nombre.toLowerCase() === String(empresa).toLowerCase())) {
+    if (candidatas.length > 5) return { varias: candidatas.slice(0, 10).map((c) => c.nombre), aviso: 'Hay varias empresas; pregunte cuál.' };
+  }
+  const elegida = candidatas.find((c) => c.nombre.toLowerCase() === String(empresa).toLowerCase()) || candidatas[0];
+  const f = crm.ficha360(elegida.id);
+  return {
+    empresa: { nombre: f.empresa.nombre, nit: f.empresa.nit, tipo: f.empresa.tipo, sector: f.empresa.sector, ciudad: f.empresa.ciudad, notas: f.empresa.notas },
+    indicadores: Object.fromEntries(Object.entries(f.kpis).map(([k, v]) => [k, typeof v === 'number' ? redondear(v, k === 'tasa_cierre' ? 4 : 0) : v])),
+    contactos: f.contactos.map((c) => ({ nombre: c.nombre, cargo: c.cargo, rol: c.rol, email: c.email, celular: c.celular, principal: Boolean(c.es_principal) })),
+    negocios: f.negocios.slice(0, 15).map((n) => ({
+      nombre: n.nombre, etapa: n.etapa, valor_sin_iva: redondear(n.valor_sin_iva), dias_en_etapa: n.dias_en_etapa,
+      dias_sin_actividad: n.dias_sin_actividad, fecha_cierre_esperada: n.fecha_cierre_esperada, fecha_cierre_real: n.fecha_cierre_real, motivo_perdida: n.motivo_perdida,
+    })),
+    ultimas_actividades: f.actividades.slice(0, 10).map((a) => ({ tipo: a.tipo, asunto: a.asunto, fecha: a.completada_en || a.fecha_programada, realizada: Boolean(a.completada), resultado: a.resultado })),
+    cotizaciones_recientes: f.cotizaciones.slice(0, 10).map((c) => ({ numero: c.numero, fecha: c.fecha_cotizacion, estado: c.estado, valor_con_iva: redondear(c.con), actividad: c.titulo })),
+    facturas_recientes: f.facturas.slice(0, 10).map((x) => ({ numero: x.numero, fecha: x.fecha, total: redondear(x.total), saldo: redondear(x.saldo), estado: x.estado })),
+    ordenes_compra: f.ordenes.slice(0, 10).map((o) => ({ numero: o.numero, fecha: o.fecha, valor: redondear(o.valor), cotizacion: o.cotizacion_numero })),
+  };
+}
+
+function embudoCrm({ desde, hasta } = {}) {
+  const crm = crmLib();
+  const t = crm.tablero({ desde, hasta });
+  const abiertos = crm.listarNegocios({ abiertos: true }).sort((a, b) => b.valor_sin_iva - a.valor_sin_iva).slice(0, 10);
+  return {
+    periodo: { desde: t.desde, hasta: t.hasta },
+    indicadores: Object.fromEntries(Object.entries(t.kpis).map(([k, v]) => [k, typeof v === 'number' ? redondear(v, ['conversion', 'cumplimiento_meta'].includes(k) ? 4 : 0) : v])),
+    embudo: t.embudo.map((e) => ({ etapa: e.etapa, negocios: e.cantidad, valor_sin_iva: redondear(e.valor_sin_iva), probabilidad: e.probabilidad, ponderado: redondear(e.ponderado) })),
+    pronostico_por_mes: t.pronostico.map((p) => ({ mes: p.etiqueta, negocios: p.cantidad, valor_sin_iva: redondear(p.valor_sin_iva), ponderado: redondear(p.ponderado) })),
+    motivos_perdida: t.motivosPerdida,
+    dias_promedio_por_etapa: t.diasPorEtapa.map((d) => ({ etapa: d.etapa, dias: redondear(d.dias_promedio, 1), negocios: d.negocios })),
+    negocios_abiertos_mas_grandes: abiertos.map((n) => ({ nombre: n.nombre, empresa: n.empresa_nombre, etapa: n.etapa, valor_sin_iva: redondear(n.valor_sin_iva), dias_en_etapa: n.dias_en_etapa, fecha_cierre_esperada: n.fecha_cierre_esperada })),
+    formulas: t.desglose.map((d) => `${d.concepto}: ${d.formula}`),
+  };
+}
+
+function alertasCrm() {
+  const a = crmLib().alertas();
+  return {
+    total: a.total, criticas: a.criticas,
+    alertas: a.alertas.slice(0, 40).map((x) => ({ grupo: x.grupo, severidad: x.severidad, titulo: x.titulo, evidencia: x.detalle })),
+    clientes_a_reactivar: crmLib().clientesAReactivar().slice(0, 15).map((r) => ({ empresa: r.nombre, ultima_factura: r.ultima_factura, numero: r.ultima_numero, dias_sin_factura: r.dias, facturado_historico: redondear(r.facturado), facturas: r.n_facturas })),
+  };
+}
+
+module.exports = {
+  HERRAMIENTAS, resumenGeneral, buscarCotizaciones, detalleCotizacion, cuentasPorPagarPendientes, buscarMaterialCatalogo, consultarPresupuesto,
+  buscarEmpresasCrm, fichaEmpresaCrm, embudoCrm, alertasCrm,
+};

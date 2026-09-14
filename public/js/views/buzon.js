@@ -108,7 +108,8 @@ function pintarOfertas(el, ofertas, isAdmin, recargar) {
         <tbody>${lista.map((o) => `
           <tr>
             <td><span class="pill">${esc(o.tipo)}</span></td>
-            <td>${esc(o.empresa || '')}<div class="muted" style="font-size:12px">${esc(o.remitente || '')}</div></td>
+            <td>${o.empresa_id ? `<a href="#/crm/empresas/${o.empresa_id}">${esc(o.empresa || '')}</a>` : esc(o.empresa || '')}<div class="muted" style="font-size:12px">${esc(o.remitente || '')}</div>
+              ${o.negocio_id ? `<a href="#/crm/negocios/${o.negocio_id}" style="font-size:12px">Ver negocio en el CRM</a>` : ''}</td>
             <td>${esc(o.asunto || '')}${o.resumen ? `<div class="muted" style="font-size:12px">${esc(o.resumen)}</div>` : ''}
               ${o.tipo === 'Proveedor' && o.valor ? `<div style="font-size:12px">Valor: ${money(o.valor)}</div>` : ''}</td>
             <td>${fmtDMY(o.fecha_recibido)}</td>

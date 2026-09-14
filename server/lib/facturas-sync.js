@@ -75,13 +75,13 @@ function ordenDelCliente(observaciones) {
 }
 
 const upsertSql = `
-  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, orden, titulo, sincronizado_en)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
+  INSERT INTO facturas (siigo_invoice_id, numero, cliente, fecha, vencimiento, total, saldo, estado, anulada, observaciones, orden, titulo, nit, sincronizado_en)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))
   ON CONFLICT(siigo_invoice_id) DO UPDATE SET
     numero = excluded.numero, cliente = excluded.cliente, fecha = excluded.fecha, vencimiento = excluded.vencimiento,
     total = excluded.total, saldo = excluded.saldo, estado = excluded.estado,
     anulada = excluded.anulada, observaciones = excluded.observaciones,
-    orden = excluded.orden, titulo = excluded.titulo, sincronizado_en = datetime('now')
+    orden = excluded.orden, titulo = excluded.titulo, nit = COALESCE(excluded.nit, facturas.nit), sincronizado_en = datetime('now')
 `;
 
 // Trae e inserta/actualiza todas las facturas de Siigo creadas entre desde y
@@ -118,7 +118,10 @@ async function sincronizarFacturas({ desde = '2000-01-01', hasta = todayStr() } 
       upsert.run(
         String(f.id), f.name || String(f.number || f.id), await nombreClienteFactura(f),
         (f.date || '').slice(0, 10), vencimiento, total, saldo, estado, anulada,
-        f.observations || null, ordenDelCliente(f.observations), tituloDeObservaciones(f.observations)
+        f.observations || null, ordenDelCliente(f.observations), tituloDeObservaciones(f.observations),
+        // NIT del cliente: con el, el CRM cruza facturas y cotizaciones de la misma
+        // empresa aunque el nombre venga escrito distinto.
+        (f.customer && f.customer.identification) ? String(f.customer.identification).trim() || null : null
       );
       totalSincronizadas++;
     }

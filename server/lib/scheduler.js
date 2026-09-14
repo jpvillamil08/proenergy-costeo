@@ -106,6 +106,14 @@ async function ejecutarSincronizacion({ manual = false } = {}) {
     } catch (e) {
       r.errores.push({ paso: 'facturas', error: e.message });
     }
+    // CRM: empresas nuevas, negocios de las cotizaciones nuevas y avance de
+    // etapas con lo que acaba de llegar (aprobaciones, OC, facturas).
+    estado.paso = 'Actualizando el CRM';
+    try {
+      r.crm = require('./crm').sincronizarCrm();
+    } catch (e) {
+      r.errores.push({ paso: 'crm', error: e.message });
+    }
     r.fin = new Date().toISOString();
     r.duracionSegundos = Math.round((Date.now() - new Date(r.inicio).getTime()) / 1000);
     estado.ultimaEjecucion = new Date().toISOString();
@@ -177,6 +185,11 @@ async function ejecutarCorreo({ manual = false } = {}) {
   const etiqueta = manual ? 'manual' : 'automatica';
   try {
     const r = await correo.revisarCorreo({ alAvanzar: (p) => { estadoCorreo.paso = p; } });
+    try {
+      r.crm = require('./crm').sincronizarCrm();
+    } catch (e) {
+      r.errores.push({ asunto: 'CRM', error: e.message });
+    }
     estadoCorreo.ultimaEjecucion = new Date().toISOString();
     estadoCorreo.ultimoResultado = r;
     estadoCorreo.ultimoError = null;
@@ -210,6 +223,17 @@ function iniciar() {
   estado.activo = true;
   estadoCorreo.activo = true;
   programarCorreo();
+  // Carga inicial del CRM (y puesta al dia tras cada despliegue). Va despues de
+  // arrancar el servidor para no demorar el primer request.
+  const tCrm = setTimeout(() => {
+    try {
+      const r = require('./crm').sincronizarCrm();
+      console.log(`[scheduler] CRM al arrancar: ${r.empresasCreadas} empresa(s), ${r.negociosCreados} negocio(s) nuevo(s), ${r.negociosAvanzados} cambio(s) de etapa en ${r.duracionMs} ms.`);
+    } catch (e) {
+      console.error('[scheduler] No se pudo sincronizar el CRM al arrancar:', e.message);
+    }
+  }, 3000);
+  if (typeof tCrm.unref === 'function') tCrm.unref();
   if (!siigo.configurada()) {
     console.log('[scheduler] Siigo no esta configurado: la sincronizacion queda programada pero no hara nada hasta que se definan las variables de entorno.');
   }

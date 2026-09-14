@@ -41,7 +41,8 @@ module.exports = (router) => {
     if (query.estado) { filtros.push('b.estado = ?'); args.push(query.estado); }
     if (query.tipo) { filtros.push('b.tipo = ?'); args.push(query.tipo); }
     const filas = db.prepare(
-      `SELECT b.*, m.web_link, m.buzon, c.numero AS cotizacion_numero, u.nombre AS atendido_por_nombre
+      `SELECT b.*, m.web_link, m.buzon, c.numero AS cotizacion_numero, u.nombre AS atendido_por_nombre,
+         (SELECT n.id FROM crm_negocios n WHERE n.buzon_oferta_id = b.id LIMIT 1) AS negocio_id
        FROM buzon_ofertas b
        LEFT JOIN correo_mensajes m ON m.id = b.mensaje_id
        LEFT JOIN cotizaciones c ON c.id = b.cotizacion_id
