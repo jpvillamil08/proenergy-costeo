@@ -64,7 +64,7 @@ async function obtenerToken() {
   return tokenCache.value;
 }
 
-async function siigoFetch(pathAndQuery, opts = {}) {
+async function siigoFetch(pathAndQuery, opts = {}, reintento = false) {
   const { partnerId } = config();
   const token = await obtenerToken();
   const res = await fetch(`${BASE_URL}${pathAndQuery}`, {
@@ -78,6 +78,13 @@ async function siigoFetch(pathAndQuery, opts = {}) {
       ...(opts.headers || {}),
     },
   });
+  // Siigo invalida el token antes de su vencimiento (el 14/09/2026 la
+  // sincronizacion de las 9 a.m. fallo con 401 usando un token en cache): se
+  // descarta, se pide uno nuevo y se reintenta una sola vez.
+  if (res.status === 401 && !reintento) {
+    tokenCache = { value: null, expiraEn: 0 };
+    return siigoFetch(pathAndQuery, opts, true);
+  }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const err = new Error(`Siigo respondio con error (HTTP ${res.status}): ${(data && (data.message || JSON.stringify(data))) || 'sin detalle'}`);
