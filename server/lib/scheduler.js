@@ -192,7 +192,10 @@ async function ejecutarCorreo({ manual = false } = {}) {
     }
     estadoCorreo.ultimaEjecucion = new Date().toISOString();
     estadoCorreo.ultimoResultado = r;
-    estadoCorreo.ultimoError = null;
+    // Los demas buzones se leyeron; el que fallo se muestra en la pantalla del Buzon.
+    estadoCorreo.ultimoError = r.buzonesConError && r.buzonesConError.length
+      ? `No se pudo leer: ${r.errores.filter((x) => String(x.asunto).startsWith('Buzón')).map((x) => `${x.asunto}: ${x.error}`).join(' | ')}`
+      : null;
     estadoCorreo.corridas++;
     console.log(`[scheduler] Correo (${etiqueta}): ${r.leidos} leido(s), ${r.procesados} procesado(s), ${r.errores.length} error(es).`);
     return r;

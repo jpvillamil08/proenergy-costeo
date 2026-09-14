@@ -338,7 +338,18 @@ async function revisarCorreo({ lector = outlook, extractor = extraccion.extraer,
       alAvanzar(`Leyendo ${carpeta === 'inbox' ? 'recibidos' : 'enviados'} de ${buzon}`);
       const est = db.prepare('SELECT leido_hasta FROM correo_estado WHERE buzon = ? AND carpeta = ?').get(buzon, carpeta);
       const desde = est ? est.leido_hasta : `${addDays(todayStr(), -DIAS_PRIMERA_LECTURA)}T00:00:00Z`;
-      const mensajes = await lector.mensajesDesde(buzon, carpeta, desde);
+      // Un buzon que Microsoft no reconoce (mal escrito, sin licencia, o fuera de
+      // la directiva de acceso) no debe frenar la lectura de los demas: se
+      // reporta y se sigue. Su marca de agua no avanza, asi que al corregirlo se
+      // lee desde donde iba.
+      let mensajes;
+      try {
+        mensajes = await lector.mensajesDesde(buzon, carpeta, desde);
+      } catch (e) {
+        resumen.errores.push({ asunto: `Buzón ${buzon} (${carpeta === 'inbox' ? 'recibidos' : 'enviados'})`, error: e.message });
+        resumen.buzonesConError = [...new Set([...(resumen.buzonesConError || []), buzon])];
+        continue;
+      }
       let hasta = desde;
       for (const m of mensajes) {
         const f = fechaDe(m, carpeta);
@@ -348,6 +359,7 @@ async function revisarCorreo({ lector = outlook, extractor = extraccion.extraer,
       marcas.push([buzon, carpeta, hasta]);
     }
   }
+  if (!marcas.length && resumen.errores.length) throw new Error(resumen.errores[0].error);
   cola.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
   resumen.leidos = cola.length;
   for (const [k, x] of cola.entries()) {
