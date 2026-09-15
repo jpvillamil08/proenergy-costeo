@@ -32,6 +32,35 @@ const CARPETAS = ['inbox', 'sentitems'];
 const DIAS_PRIMERA_LECTURA = 30;
 const MAX_INTENTOS = 3;
 
+// Ritmo de llamadas a la IA. El plan gratis de Gemini permite 5 consultas por
+// minuto: la primera lectura (222 correos) choco con ese limite y casi todo
+// fallo con HTTP 429. Se espera entre llamadas y, si igual responde 429 o 503
+// (modelo saturado), se espera lo que pide y se reintenta.
+const IA_INTERVALO_MS = Number(process.env.CORREO_IA_INTERVALO_MS) || 13000;
+const IA_REINTENTOS = 4;
+let ultimaLlamadaIA = 0;
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function extraerConRitmo(extractor, args) {
+  // Las pruebas pasan un extractor simulado: solo se regula el real.
+  const regular = extractor === extraccion.extraer;
+  for (let intento = 0; ; intento++) {
+    if (regular) {
+      const espera = ultimaLlamadaIA + IA_INTERVALO_MS - Date.now();
+      if (espera > 0) await dormir(espera);
+      ultimaLlamadaIA = Date.now();
+    }
+    try {
+      return await extractor(args);
+    } catch (e) {
+      const m = String(e.message).match(/HTTP (429|503)/);
+      if (!regular || !m || intento >= IA_REINTENTOS) throw e;
+      const pide = String(e.message).match(/retry in ([\d.]+)s/i);
+      await dormir(Math.min(120000, pide ? Math.ceil(Number(pide[1]) * 1000) + 1000 : 30000 * (intento + 1)));
+    }
+  }
+}
+
 // ---------------------------------------------------------------- utilidades
 
 function normNumero(s) {
@@ -302,7 +331,7 @@ async function procesarMensaje(buzon, carpeta, m, resumen, { lector, extractor }
 async function clasificarYAplicar(fila, m, buzon, nombres, resumen, { lector, extractor }) {
   try {
     const adj = nombres.some(extraccion.esDocumento) ? await lector.adjuntos(buzon, m.id) : [];
-    const d = await extractor({ mensaje: m, adjuntos: adj, carpeta: fila.carpeta });
+    const d = await extraerConRitmo(extractor, { mensaje: m, adjuntos: adj, carpeta: fila.carpeta });
     db.exec('BEGIN');
     let accion;
     try {
@@ -379,7 +408,8 @@ async function revisarCorreo({ lector = outlook, extractor = extraccion.extraer,
   db.prepare(
     `UPDATE correo_mensajes SET intentos = 1
      WHERE estado = 'error' AND intentos >= ? AND (error LIKE '%no longer available%' OR error LIKE '%is not found for API version%'
-       OR error LIKE '%API key not valid%' OR error LIKE '%HTTP 401%' OR error LIKE '%HTTP 403%')`
+       OR error LIKE '%API key not valid%' OR error LIKE '%HTTP 401%' OR error LIKE '%HTTP 403%'
+       OR error LIKE '%HTTP 429%' OR error LIKE '%HTTP 503%')`
   ).run(MAX_INTENTOS);
   const conError = db.prepare(
     `SELECT * FROM correo_mensajes WHERE estado = 'error' AND intentos < ? ORDER BY id LIMIT 200`
