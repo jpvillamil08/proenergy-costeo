@@ -374,8 +374,15 @@ async function revisarCorreo({ lector = outlook, extractor = extraccion.extraer,
   }
   // Reintenta los que fallaron (por ejemplo, la IA no respondio), hasta 3 veces.
   alAvanzar('Reintentando correos con error');
+  // Si la IA fallo por configuracion (modelo retirado, clave invalida) el correo
+  // no tiene la culpa: no gasta sus intentos y se reintenta hasta que se corrija.
+  db.prepare(
+    `UPDATE correo_mensajes SET intentos = 1
+     WHERE estado = 'error' AND intentos >= ? AND (error LIKE '%no longer available%' OR error LIKE '%is not found for API version%'
+       OR error LIKE '%API key not valid%' OR error LIKE '%HTTP 401%' OR error LIKE '%HTTP 403%')`
+  ).run(MAX_INTENTOS);
   const conError = db.prepare(
-    `SELECT * FROM correo_mensajes WHERE estado = 'error' AND intentos < ? ORDER BY id LIMIT 20`
+    `SELECT * FROM correo_mensajes WHERE estado = 'error' AND intentos < ? ORDER BY id LIMIT 200`
   ).all(MAX_INTENTOS);
   for (const fila of conError) {
     db.prepare('UPDATE correo_mensajes SET intentos = intentos + 1 WHERE id = ?').run(fila.id);

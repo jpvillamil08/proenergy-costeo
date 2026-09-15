@@ -11,7 +11,7 @@
 //
 // Si ambas estan configuradas, se usa Gemini por defecto. Ninguna clave se
 // escribe en este archivo: se configuran en Railway > Variables.
-// Opcionales: GEMINI_MODEL (por defecto gemini-2.5-flash), ANTHROPIC_MODEL
+// Opcionales: GEMINI_MODEL (por defecto gemini-3.6-flash), ANTHROPIC_MODEL
 // (por defecto claude-sonnet-4-5-20250929), IA_PROVEEDOR=claude para forzar
 // Claude aunque tambien exista GEMINI_API_KEY.
 
@@ -45,7 +45,9 @@ function requerirProveedor() {
 // ==================== Google Gemini (gratis) ====================
 
 const GEMINI_URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
+// El 14/09/2026 Google dejo de ofrecer gemini-2.5-flash ("no longer available
+// to new users", HTTP 404) y todos los correos fallaron: su reemplazo es 3.6.
+const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 
 async function llamarGemini({ system, contents, herramientas = [], json = false }) {
   const apiKey = process.env.GEMINI_API_KEY;
