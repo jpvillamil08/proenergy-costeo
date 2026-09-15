@@ -41,9 +41,19 @@ const IA_REINTENTOS = 4;
 let ultimaLlamadaIA = 0;
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Cuando la cuota se agota del todo (el plan gratis tambien tiene un tope
+// DIARIO, 20 consultas), seguir llamando solo gasta tiempo: se pausa la IA una
+// lectura y los correos quedan en error "HTTP 429", que no gasta sus intentos, para
+// la siguiente lectura.
+let iaPausadaHasta = 0;
+let ultimoErrorCuota = '';
+
 async function extraerConRitmo(extractor, args) {
   // Las pruebas pasan un extractor simulado: solo se regula el real.
   const regular = extractor === extraccion.extraer;
+  if (regular && Date.now() < iaPausadaHasta) {
+    throw new Error(`IA en pausa por cuota agotada (HTTP 429). ${ultimoErrorCuota}`.slice(0, 480));
+  }
   for (let intento = 0; ; intento++) {
     if (regular) {
       const espera = ultimaLlamadaIA + IA_INTERVALO_MS - Date.now();
@@ -54,6 +64,11 @@ async function extraerConRitmo(extractor, args) {
       return await extractor(args);
     } catch (e) {
       const m = String(e.message).match(/HTTP (429|503)/);
+      if (regular && m && m[1] === '429' && intento >= 1) {
+        iaPausadaHasta = Date.now() + 50 * 60000; // < 1 h: la lectura de la hora siguiente vuelve a probar
+        ultimoErrorCuota = String(e.message).slice(0, 300);
+        throw e;
+      }
       if (!regular || !m || intento >= IA_REINTENTOS) throw e;
       const pide = String(e.message).match(/retry in ([\d.]+)s/i);
       await dormir(Math.min(120000, pide ? Math.ceil(Number(pide[1]) * 1000) + 1000 : 30000 * (intento + 1)));
@@ -419,6 +434,14 @@ async function revisarCorreo({ lector = outlook, extractor = extraccion.extraer,
     try {
       const m = await lector.mensaje(fila.buzon, fila.graph_id);
       const nombres = String(fila.adjuntos || '').split(', ').filter(Boolean);
+      // Con el filtro actual (mas estricto) puede que ya no valga la pena: se
+      // descarta sin gastar una consulta de la IA.
+      const pf = extraccion.prefiltro(m, nombres);
+      if (!pf.pasa) {
+        db.prepare(`UPDATE correo_mensajes SET estado = 'procesado', tipo = 'otro', accion = ?, error = NULL WHERE id = ?`).run(`Descartado por el filtro (${pf.motivo})`, fila.id);
+        resumen.descartados++;
+        continue;
+      }
       await clasificarYAplicar({ id: fila.id, fecha: fila.fecha, carpeta: fila.carpeta, conversacion: fila.conversacion }, m, fila.buzon, nombres, resumen, { lector, extractor });
     } catch (e) {
       db.prepare(`UPDATE correo_mensajes SET error = ? WHERE id = ?`).run(String(e.message).slice(0, 500), fila.id);

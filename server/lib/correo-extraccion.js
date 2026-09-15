@@ -14,7 +14,13 @@
 const { readZip } = require('./xlsx');
 const ia = require('./claude');
 
+// En el asunto cuentan todas; en el cuerpo solo las fuertes. "Propuesta",
+// "precio" o "solicitud" aparecen en firmas y conversaciones normales, y cada
+// correo que pasa gasta una consulta de la IA (el plan gratis de Gemini da 20 al dia).
 const PALABRAS = /cotiz|oferta|propuesta|orden\s+de\s+(compra|servicio)|\bo\.?\s?[cs]\.?\s*(n[o°.]*\s*)?\d|solicitud|invitaci[oó]n|licitaci|\brfq\b|precio|presupuesto|alcance/i;
+const PALABRAS_CUERPO = /cotizaci[oó]n|cotizar|oferta (comercial|t[eé]cnica|econ[oó]mica)|orden\s+de\s+(compra|servicio)|\bo\.?\s?c\.?\s*(n[o°.]*\s*)?\d{3,}|licitaci[oó]n|invitaci[oó]n a (cotizar|ofertar|presentar)|\brfq\b/i;
+// Notificaciones de plataformas: nombran cotizaciones o propuestas pero no son negocio.
+const NOTIFICACION = /ha compartido|compartido contigo|shared .* with you|te recordamos tu|restablec|contrase[ñn]a|c[oó]digo de verificaci|verifica tu|invitaci[oó]n:|aceptado:|rechazado:|actualizado:|nuevo inicio de sesi/i;
 const AUTOMATICO = /^(respuesta autom[aá]tica|automatic reply|fuera de la oficina|out of office|no[- ]reply|undeliverable|no se pudo entregar)/i;
 const BOLETIN = /unsubscribe|darse de baja|cancelar (la )?suscripci|anular suscripci/i;
 const TIPOS = ['cotizacion_propia', 'cotizacion_siigo', 'solicitud_cliente', 'invitacion_licitar', 'cotizacion_proveedor', 'orden_compra', 'otro'];
@@ -30,7 +36,8 @@ function prefiltro(m, nombresAdjuntos = []) {
   const cabeceras = (m.internetMessageHeaders || []).map((h) => String(h.name || '').toLowerCase());
   const cuerpo = String((m.body && m.body.content) || m.bodyPreview || '');
   if (cabeceras.includes('list-unsubscribe') || BOLETIN.test(cuerpo.slice(-3000))) return { pasa: false, motivo: 'boletín' };
-  if (PALABRAS.test(asunto) || PALABRAS.test(cuerpo.slice(0, 4000))) return { pasa: true };
+  if (NOTIFICACION.test(asunto)) return { pasa: false, motivo: 'notificación' };
+  if (PALABRAS.test(asunto) || PALABRAS_CUERPO.test(cuerpo.slice(0, 4000))) return { pasa: true };
   if (nombresAdjuntos.some(esDocumento)) return { pasa: true };
   return { pasa: false, motivo: 'sin palabras de negocio ni documentos' };
 }
